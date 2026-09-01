@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ZORP WALLET</title>
+<style>
+  :root{
+    --bg:#05070a;
+    --bg-elev:#0b0f12;
+    --panel:#10151a;
+    --panel-2:#161c22;
+    --border:#232b32;
+    --zorp:#8ce619;
+    --zorp-dim:#3d7a0f;
+    --zorp-glow:rgba(140,230,25,.35);
+    --silver:#8a9199;
+    --text:#f2f5f0;
+    --text-dim:#9aa39a;
+    --text-faint:#5f6b62;
+    --red:#ff5c5c;
+    --radius:16px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    overflow-x:hidden;
+    min-height:100vh;
+  }
+  #app{max-width:480px; margin:0 auto; min-height:100vh; position:relative; padding-bottom:88px;}
+
+  /* ---------- estrellas de fondo (sutil, solo bienvenida) ---------- */
+  .stars{position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden;}
+  .star{position:absolute; background:#fff; border-radius:50%; opacity:.6; animation:twinkle 3s ease-in-out infinite;}
+  @keyframes twinkle{0%,100%{opacity:.2;} 50%{opacity:.9;}}
+
+  /* ---------- pantalla de bienvenida ---------- */
+  #welcome{
+    position:fixed; inset:0; z-index:100;
+    background:radial-gradient(ellipse at 50% 20%, #0e1f06 0%, #05070a 60%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:32px 24px; text-align:center;
+  }
+  #welcome .logo-ring{
+    width:150px; height:150px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    margin-bottom:28px;
+    box-shadow:0 0 60px var(--zorp-glow), inset 0 0 30px rgba(140,230,25,.15);
+    border:2px solid var(--zorp-dim);
+    font-size:64px;
+    background:var(--panel);
+    animation:floaty 3.5s ease-in-out infinite;
+  }
+  @keyframes floaty{0%,100%{transform:translateY(0);} 50%{transform:translateY(-8px);}}
+  #welcome h1{
+    font-size:38px; letter-spacing:1px; color:var(--zorp);
+    text-shadow:0 0 24px var(--zorp-glow);
+    margin-bottom:6px;
+  }
+  #welcome .sub{color:var(--text-dim); font-size:14px; margin-bottom:36px;}
+  #welcome .connect-btn{
+    width:100%; max-width:300px; padding:16px; border:none; border-radius:14px;
+    background:linear-gradient(180deg, var(--zorp) 0%, #6bb810 100%);
+    color:#08130a; font-weight:700; font-size:16px;
+    box-shadow:0 6px 24px var(--zorp-glow);
+  }
+  #welcome .connect-btn:disabled{opacity:.6;}
+  #welcome .status{margin-top:16px; font-size:13px; color:var(--text-faint); min-height:18px;}
+
+  /* ---------- header principal ---------- */
+  header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 18px; position:sticky; top:0; z-index:10;
+    background:rgba(5,7,10,.92); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border);
+  }
+  .brand{display:flex; align-items:center; gap:10px;}
+  .brand .mark{
+    width:38px; height:38px; border-radius:50%; background:var(--panel);
+    border:1.5px solid var(--zorp-dim); display:flex; align-items:center; justify-content:center;
+    font-size:18px;
+  }
+  .brand .name{font-weight:700; font-size:16px; letter-spacing:.3px;}
+  .user-chip{
+    display:flex; align-items:center; gap:6px; background:var(--panel);
+    border:1px solid var(--border); border-radius:20px; padding:6px 12px; font-size:13px; color:var(--text-dim);
+  }
+  .user-chip .dot{width:6px; height:6px; border-radius:50%; background:var(--zorp);}
+
+  /* ---------- tabs ---------- */
+  main{padding:16px 16px 8px;}
+  .screen{display:none;}
+  .screen.active{display:block; animation:fadein .2s ease;}
+  @keyframes fadein{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
+
+  nav.tabbar{
+    position:fixed; bottom:0; left:0; right:0; z-index:20;
+    max-width:480px; margin:0 auto;
+    background:rgba(11,15,18,.97); backdrop-filter:blur(12px);
+    border-top:1px solid var(--border);
+    display:flex; padding:8px 4px calc(8px + env(safe-area-inset-bottom));
+  }
+  nav.tabbar button{
+    flex:1; background:none; border:none; color:var(--text-faint);
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    padding:6px 2px; font-size:10.5px; font-weight:600;
+  }
+  nav.tabbar button .ic{font-size:19px; opacity:.7;}
+  nav.tabbar button.active{color:var(--zorp);}
+  nav.tabbar button.active .ic{opacity:1;}
+
+  /* ---------- componentes comunes ---------- */
+  .card{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:16px; margin-bottom:14px;
+  }
+  .card-title{font-size:13px; color:var(--text-dim); margin-bottom:10px; font-weight:600;}
+  .balance-card{
+    background:linear-gradient(160deg, #0e1a08 0%, var(--panel) 55%);
+    border:1px solid var(--zorp-dim);
+    border-radius:20px; padding:22px 18px; margin-bottom:16px;
+  }
+  .balance-card .label{font-size:12px; color:var(--text-dim); margin-bottom:6px;}
+  .balance-card .amount{font-size:32px; font-weight:800; color:var(--text); letter-spacing:.3px;}
+  .balance-card .amount .sym{font-size:16px; color:var(--zorp); font-weight:700; margin-left:6px;}
+  .balance-card .usd{font-size:13px; color:var(--text-faint); margin-top:4px;}
+
+  .quick-actions{display:flex; gap:10px; margin-bottom:16px;}
+  .quick-actions button{
+    flex:1; background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    padding:14px 6px; color:var(--text); display:flex; flex-direction:column; align-items:center; gap:6px;
+    font-size:12px; font-weight:600;
+  }
+  .quick-actions button .ic{font-size:20px;}
+  .quick-actions button.primary{background:var(--zorp); color:#08130a; border-color:var(--zorp);}
+
+  .token-row{
+    display:flex; align-items:center; gap:12px; padding:12px 4px;
+    border-bottom:1px solid var(--border);
+  }
+  .token-row:last-child{border-bottom:none;}
+  .token-row .tk-icon{
+    width:38px; height:38px; border-radius:50%; background:var(--panel-2);
+    display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700; color:var(--zorp);
+    border:1px solid var(--border);
+  }
+  .token-row .tk-info{flex:1; min-width:0;}
+  .token-row .tk-name{font-size:14px; font-weight:600;}
+  .token-row .tk-sub{font-size:12px; color:var(--text-faint);}
+  .token-row .tk-amt{text-align:right;}
+  .token-row .tk-bal{font-size:14px; font-weight:600;}
+  .token-row .tk-usd{font-size:12px; color:var(--text-faint);}
+
+  .btn{
+    display:block; width:100%; padding:15px; border:none; border-radius:14px;
+    background:var(--zorp); color:#08130a; font-weight:700; font-size:15px; text-align:center;
+  }
+  .btn:disabled{opacity:.5;}
+  .btn.secondary{background:var(--panel-2); color:var(--text); border:1px solid var(--border);}
+  .btn.ghost{background:transparent; color:var(--zorp); border:1px solid var(--zorp-dim);}
+
+  input.field{
+    width:100%; background:var(--panel-2); border:1px solid var(--border); border-radius:12px;
+    padding:14px; color:var(--text); font-size:16px; outline:none;
+  }
+  input.field:focus{border-color:var(--zorp-dim);}
+  .field-label{font-size:12px; color:var(--text-dim); margin-bottom:6px; font-weight:600;}
+
+  .toast{
+    position:fixed; left:50%; bottom:100px; transform:translateX(-50%);
+    background:var(--panel-2); border:1px solid var(--zorp-dim); color:var(--text);
+    padding:12px 18px; border-radius:12px; font-size:13px; z-index:200;
+    max-width:90%; text-align:center; box-shadow:0 8px 24px rgba(0,0,0,.5);
+    display:none;
+  }
+  .toast.error{border-color:var(--red);}
+  .empty-state{text-align:center; padding:40px 16px; color:var(--text-faint); font-size:13px;}
+  .section-title{font-size:18px; font-weight:800; margin-bottom:14px;}
+
+  .swap-box{position:relative;}
+  .swap-io{background:var(--panel-2); border:1px solid var(--border); border-radius:14px; padding:14px;}
+  .swap-io .row1{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;}
+  .swap-io .row1 .lbl{font-size:12px; color:var(--text-faint);}
+  .swap-io .row2{display:flex; align-items:center; gap:10px;}
+  .swap-io input{
+    flex:1; background:none; border:none; outline:none; color:var(--text); font-size:24px; font-weight:700; min-width:0;
+  }
+  .tk-select{
+    display:flex; align-items:center; gap:6px; background:var(--panel); border:1px solid var(--border);
+    border-radius:20px; padding:7px 12px; font-size:13px; font-weight:700; white-space:nowrap;
+  }
+  .swap-arrow{
+    width:38px; height:38px; border-radius:50%; background:var(--panel); border:3px solid var(--bg);
+    display:flex; align-items:center; justify-content:center; margin:-12px auto; position:relative; z-index:2;
+    color:var(--zorp); font-size:16px;
+  }
+  .fee-note{font-size:12px; color:var(--text-faint); margin-top:10px; text-align:center;}
+
+  .trend-row{display:flex; align-items:center; gap:12px; padding:13px 4px; border-bottom:1px solid var(--border);}
+  .trend-row:last-child{border-bottom:none;}
+  .trend-rank{width:20px; color:var(--text-faint); font-size:13px; font-weight:700;}
+  .trend-chg{font-size:13px; font-weight:700;}
+  .trend-chg.up{color:var(--zorp);}
+  .trend-chg.down{color:var(--red);}
+
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:150;
+    display:none; align-items:flex-end; justify-content:center;
+  }
+  .modal-overlay.show{display:flex;}
+  .modal{
+    background:var(--bg-elev); border-top:1px solid var(--border); border-radius:20px 20px 0 0;
+    width:100%; max-width:480px; padding:20px 18px calc(20px + env(safe-area-inset-bottom));
+    max-height:80vh; overflow-y:auto;
+  }
+  .modal-handle{width:36px; height:4px; background:var(--border); border-radius:2px; margin:0 auto 16px;}
+  .modal-title{font-size:17px; font-weight:800; margin-bottom:16px;}
+  .close-x{position:absolute; top:14px; right:18px; color:var(--text-faint); font-size:20px;}
+
+  .missions-card{display:flex; align-items:center; gap:12px; padding:14px; margin-bottom:10px;}
+  .missions-card .m-ic{font-size:22px;}
+  .missions-card .m-info{flex:1;}
+  .missions-card .m-title{font-size:14px; font-weight:600;}
+  .missions-card .m-reward{font-size:12px; color:var(--zorp);}
+  .missions-card .m-btn{
+    background:var(--zorp-dim); color:#0e1f06; font-size:12px; font-weight:700; padding:8px 14px; border-radius:10px; border:none;
+  }
+
+  ::-webkit-scrollbar{display:none;}
+</style>
+</head>
+<body>
+
+<div class="stars" id="stars"></div>
+
+<!-- ================= PANTALLA DE BIENVENIDA ================= -->
+<div id="welcome">
+  <div class="logo-ring">👽</div>
+  <h1>ZORP WALLET</h1>
+  <div class="sub">Tu wallet Web3 en World App</div>
+  <button class="connect-btn" id="btnConnect">Conectar wallet</button>
+  <div class="status" id="connectStatus"></div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="app" style="display:none;">
+  <header>
+    <div class="brand">
+      <div class="mark">👽</div>
+      <div class="name">ZORP</div>
+    </div>
+    <div class="user-chip"><span class="dot"></span><span id="userTag">—</span></div>
+  </header>
+
+  <main>
+
+    <!-- -------- INICIO -------- -->
+    <section class="screen active" id="screen-inicio">
+      <div class="balance-card">
+        <div class="label">Balance total estimado</div>
+        <div class="amount" id="totalUsd">$0.00</div>
+        <div class="usd" id="walletAddrShort">—</div>
+      </div>
+
+      <div class="quick-actions">
+        <button class="primary" onclick="goTab('swap')"><span class="ic">🔄</span>Swap</button>
+        <button onclick="openModal('sendModal')"><span class="ic">📤</span>Enviar</button>
+        <button onclick="openModal('receiveModal')"><span class="ic">📥</span>Recibir</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Tus tokens</div>
+        <div id="tokenList">
+          <div class="empty-state">Cargando tokens…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- -------- SWAP -------- -->
+    <section class="screen" id="screen-swap">
+      <div class="section-title">Swap</div>
+      <div class="swap-box">
+        <div class="swap-io">
+          <div class="row1"><span class="lbl">Pagas</span><span class="lbl" id="fromBalLbl">Saldo: 0</span></div>
+          <div class="row2">
+            <input type="text" inputmode="decimal" placeholder="0.0" id="fromAmount">
+            <div class="tk-select" id="fromTokenBtn">WLD ▾</div>
+          </div>
+        </div>
+        <div class="swap-arrow" onclick="flipSwap()">⇅</div>
+        <div class="swap-io">
+          <div class="row1"><span class="lbl">Recibes (estimado)</span><span class="lbl" id="toBalLbl">Saldo: 0</span></div>
+          <div class="row2">
+            <input type="text" placeholder="0.0" id="toAmount" disabled>
+            <div class="tk-select" id="toTokenBtn">Elegir ▾</div>
+          </div>
+        </div>
+      </div>
+      <button class="btn" style="margin-top:16px;" id="btnSwap">Ingresá un monto</button>
+      <div class="fee-note" id="feeNote">Comisión ZORP: 0.50% · con 100.000+ $ZORP: 0.30%</div>
+    </section>
+
+    <!-- -------- TENDENCIAS -------- -->
+    <section class="screen" id="screen-tendencias">
+      <div class="section-title">🔥 Tendencias</div>
+      <div class="card">
+        <div id="trendList">
+          <div class="empty-state">Cargando tokens en tendencia…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- -------- MISIONES -------- -->
+    <section class="screen" id="screen-misiones">
+      <div class="section-title">Misiones</div>
+      <div class="card">
+        <div class="card-title">Racha diaria</div>
+        <div class="empty-state">Próximamente</div>
+      </div>
+      <div class="missions-card card">
+        <div class="m-ic">🐦</div>
+        <div class="m-info">
+          <div class="m-title">Seguir a ZORP en X</div>
+          <div class="m-reward">+80 $ZORP</div>
+        </div>
+        <button class="m-btn">Ir</button>
+      </div>
+      <div class="missions-card card">
+        <div class="m-ic">📨</div>
+        <div class="m-info">
+          <div class="m-title">Unirte al Telegram</div>
+          <div class="m-reward">+80 $ZORP</div>
+        </div>
+        <button class="m-btn">Ir</button>
+      </div>
+    </section>
+
+    <!-- -------- PERFIL -------- -->
+    <section class="screen" id="screen-perfil">
+      <div class="section-title">Perfil</div>
+      <div class="card">
+        <div class="card-title">Tu cuenta</div>
+        <div style="font-size:14px; margin-bottom:4px;" id="profileUser">—</div>
+        <div style="font-size:12px; color:var(--text-faint); word-break:break-all;" id="profileAddr">—</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Invitá y ganá</div>
+        <div class="empty-state">Próximamente</div>
+      </div>
+    </section>
+
+  </main>
+
+  <nav class="tabbar">
+    <button class="tab-btn active" data-tab="inicio" onclick="goTab('inicio')"><span class="ic">🏠</span>Inicio</button>
+    <button class="tab-btn" data-tab="swap" onclick="goTab('swap')"><span class="ic">🔄</span>Swap</button>
+    <button class="tab-btn" data-tab="tendencias" onclick="goTab('tendencias')"><span class="ic">📈</span>Tendencias</button>
+    <button class="tab-btn" data-tab="misiones" onclick="goTab('misiones')"><span class="ic">🎯</span>Misiones</button>
+    <button class="tab-btn" data-tab="perfil" onclick="goTab('perfil')"><span class="ic">👤</span>Perfil</button>
+  </nav>
+</div>
+
+<!-- ================= MODAL: ENVIAR ================= -->
+<div class="modal-overlay" id="sendModal">
+  <div class="modal" style="position:relative;">
+    <div class="close-x" onclick="closeModal('sendModal')">✕</div>
+    <div class="modal-handle"></div>
+    <div class="modal-title">Enviar</div>
+    <div class="field-label">Token</div>
+    <div class="tk-select" id="sendTokenBtn" style="margin-bottom:14px; width:fit-content;">WLD ▾</div>
+    <div class="field-label">Dirección o usuario</div>
+    <input class="field" id="sendTo" placeholder="0x... o @usuario" style="margin-bottom:14px;">
+    <div class="field-label">Cantidad</div>
+    <input class="field" id="sendAmount" inputmode="decimal" placeholder="0.0" style="margin-bottom:18px;">
+    <button class="btn" id="btnSend">Enviar</button>
+  </div>
+</div>
+
+<!-- ================= MODAL: RECIBIR ================= -->
+<div class="modal-overlay" id="receiveModal">
+  <div class="modal" style="position:relative;">
+    <div class="close-x" onclick="closeModal('receiveModal')">✕</div>
+    <div class="modal-handle"></div>
+    <div class="modal-title">Recibir</div>
+    <div class="card" style="text-align:center;">
+      <div class="card-title">Tu dirección</div>
+      <div style="font-size:13px; word-break:break-all; margin-bottom:14px;" id="receiveAddr">—</div>
+      <button class="btn secondary" onclick="copyAddr()">Copiar dirección</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODAL: SELECCIONAR TOKEN ================= -->
+<div class="modal-overlay" id="tokenPickerModal">
+  <div class="modal" style="position:relative;">
+    <div class="close-x" onclick="closeModal('tokenPickerModal')">✕</div>
+    <div class="modal-handle"></div>
+    <div class="modal-title">Elegí un token</div>
+    <div id="tokenPickerList"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ============================================================
+  //  ZORP WALLET — configuración
+  // ============================================================
+  const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
+  const CHAIN_ID       = 480; // World Chain
+
+  const ZORP_TOKEN     = '0xaB841a1E0cC65A3cC41b842C85E0cE51C87fb28E';
+  const ZORP_ROUTER    = '0x542d67846072003Ee41539600F6310Db6399Dd3c';
+  const V3_ROUTER_REAL = '0x1072a0a713a23a2da9bab99e9cd68187970e89a4';
+  const V2_ROUTER_REAL = '0x541ab7c31a119441ef3575f6973277de0ef460bd';
+  const WLD_ADDRESS    = '0x2cFc85d8E48F8EAB294be644d9E25C3030863003';
+
+  const RPC_ENDPOINTS = [
+    'https://worldchain-mainnet.g.alchemy.com/public',
+    'https://worldchain-rpc.publicnode.com'
+  ];
+
+  // lista base de tokens conocidos (se amplía dinámicamente si hace falta)
+  const KNOWN_TOKENS = [
+    { symbol:'WLD',  name:'Worldcoin', address: WLD_ADDRESS, decimals:18, icon:'W' },
+    { symbol:'ZORP', name:'Zorp Token', address: ZORP_TOKEN, decimals:18, icon:'Z' }
+  ];
+
+  let provider = null;
+  let mk = null;
+  let userAddress = null;
+  let username = null;
+  let fromToken = KNOWN_TOKENS[0];
+  let toToken = null;
+  let pickerTarget = null; // 'from' | 'to' | 'send'
+  let sendToken = KNOWN_TOKENS[0];
+
+  // ------------------------------------------------------------
+  //  utilidades UI
+  // ------------------------------------------------------------
+  function showToast(msg, isError){
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast' + (isError ? ' error' : '');
+    t.style.display = 'block';
+    clearTimeout(window._toastTimer);
+    window._toastTimer = setTimeout(()=>{ t.style.display='none'; }, 3500);
+  }
+
+  function shortAddr(a){
+    if(!a) return '—';
+    return a.slice(0,6) + '…' + a.slice(-4);
+  }
+
+  function num(v){
+    if(typeof v !== 'string') return parseFloat(v) || 0;
+    return parseFloat(v.replace(',', '.')) || 0;
+  }
+
+  function goTab(name){
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('screen-' + name).classList.add('active');
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+    if(name === 'tendencias') loadTrending();
+  }
+
+  function openModal(id){ document.getElementById(id).classList.add('show'); }
+  function closeModal(id){ document.getElementById(id).classList.remove('show'); }
+
+  function copyAddr(){
+    if(!userAddress) return;
+    try{
+      navigator.clipboard.writeText(userAddress);
+      showToast('Dirección copiada');
+    }catch(e){
+      const ta = document.createElement('textarea');
+      ta.value = userAddress; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+      showToast('Dirección copiada');
+    }
+  }
+
+  // fondo de estrellas simple
+  (function seedStars(){
+    const box = document.getElementById('stars');
+    for(let i=0;i<60;i++){
+      const s = document.createElement('div');
+      s.className = 'star';
+      s.style.left = Math.random()*100 + '%';
+      s.style.top = Math.random()*100 + '%';
+      const size = Math.random()*2 + 1;
+      s.style.width = size+'px'; s.style.height = size+'px';
+      s.style.animationDelay = (Math.random()*3)+'s';
+      box.appendChild(s);
+    }
+  })();
+
+  // ============================================================
+  //  MiniKit — patrón que ya funciona en el resto de las apps
+  // ============================================================
+  async function initMiniKit(){
+    try{
+      const mod = await import('https://esm.sh/@worldcoin/minikit-js@2');
+      mk = mod.MiniKit;
+      window._MiniKit = mk;
+      mk.install(ZORP_APP_ID);
+    }catch(e){
+      console.error('No se pudo cargar MiniKit', e);
+    }
+  }
+
+  function getMiniKit(){
+    return window._MiniKit || window.MiniKit || mk;
+  }
+
+  async function waitForMiniKitReady(maxTries){
+    for(let i=0;i<maxTries;i++){
+      const k = getMiniKit();
+      if(k) return k;
+      await new Promise(r=>setTimeout(r,100));
+    }
+    return null;
+  }
+
+  async function connectWallet(){
+    const statusEl = document.getElementById('connectStatus');
+    const btn = document.getElementById('btnConnect');
+    btn.disabled = true;
+    statusEl.textContent = 'Conectando…';
+
+    const k = await waitForMiniKitReady(30);
+    if(!k){
+      statusEl.textContent = 'Abrí esta app desde World App.';
+      btn.disabled = false;
+      return;
+    }
+
+    try{
+      let installed = false;
+      try{ installed = k.isInstalled ? k.isInstalled() : true; }catch(e){ installed = true; }
+      if(!installed){
+        statusEl.textContent = 'Abrí esta app desde World App.';
+        btn.disabled = false;
+        return;
+      }
+
+      const nonce = 'zorp' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+      const res = await k.walletAuth({
+        nonce,
+        statement: 'Conectate a ZORP WALLET'
+      });
+
+      const address = (res && res.finalPayload && res.finalPayload.address)
+        || (res && res.address)
+        || (k.walletAddress);
+
+      if(!address){
+        statusEl.textContent = 'No se pudo conectar. Intentá de nuevo.';
+        btn.disabled = false;
+        return;
+      }
+
+      userAddress = address;
+
+      try{
+        const u = await k.getUserByAddress ? await k.getUserByAddress(address) : null;
+        username = (u && u.username) ? u.username : null;
+      }catch(e){ username = null; }
+
+      onWalletConnected();
+    }catch(e){
+      console.error(e);
+      statusEl.textContent = 'Error al conectar. Probá de nuevo.';
+      btn.disabled = false;
+    }
+  }
+
+  function onWalletConnected(){
+    document.getElementById('welcome').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('userTag').textContent = username ? '@'+username : shortAddr(userAddress);
+    document.getElementById('walletAddrShort').textContent = shortAddr(userAddress);
+    document.getElementById('receiveAddr').textContent = userAddress;
+    document.getElementById('profileUser').textContent = username ? '@'+username : 'Sin username';
+    document.getElementById('profileAddr').textContent = userAddress;
+    initEthers();
+    loadBalances();
+  }
+
+  // ============================================================
+  //  ethers.js — lectura de blockchain
+  // ============================================================
+  let ethersProvider = null;
+
+  async function initEthers(){
+    if(window.ethers) return;
+    await new Promise((resolve, reject)=>{
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js';
+      s.onload = resolve; s.onerror = reject;
+      document.body.appendChild(s);
+    });
+  }
+
+  async function getReadProvider(){
+    if(ethersProvider) return ethersProvider;
+    for(const url of RPC_ENDPOINTS){
+      try{
+        const p = new ethers.JsonRpcProvider(url);
+        await p.getBlockNumber();
+        ethersProvider = p;
+        return p;
+      }catch(e){ continue; }
+    }
+    throw new Error('Sin conexión RPC');
+  }
+
+  const ERC20_ABI = [
+    'function balanceOf(address) view returns (uint256)',
+    'function decimals() view returns (uint8)',
+    'function symbol() view returns (string)',
+    'function name() view returns (string)',
+    'function approve(address spender, uint256 amount) returns (bool)',
+    'function allowance(address owner, address spender) view returns (uint256)'
+  ];
+
+  async function loadBalances(){
+    try{
+      const p = await getReadProvider();
+      const listEl = document.getElementById('tokenList');
+      listEl.innerHTML = '';
+      let totalKnown = 0;
+
+      for(const tk of KNOWN_TOKENS){
+        try{
+          const c = new ethers.Contract(tk.address.toLowerCase(), ERC20_ABI, p);
+          const bal = await c.balanceOf(userAddress);
+          const formatted = ethers.formatUnits(bal, tk.decimals);
+          const row = document.createElement('div');
+          row.className = 'token-row';
+          row.innerHTML = `
+            <div class="tk-icon">${tk.icon}</div>
+            <div class="tk-info">
+              <div class="tk-name">${tk.name}</div>
+              <div class="tk-sub">${tk.symbol}</div>
+            </div>
+            <div class="tk-amt">
+              <div class="tk-bal">${trimNum(formatted)}</div>
+            </div>`;
+          listEl.appendChild(row);
+        }catch(e){ /* token sin lectura, se omite */ }
+      }
+
+      if(!listEl.children.length){
+        listEl.innerHTML = '<div class="empty-state">No se encontraron tokens</div>';
+      }
+    }catch(e){
+      document.getElementById('tokenList').innerHTML = '<div class="empty-state">No se pudo conectar a la red. Reintentá.</div>';
+    }
+  }
+
+  function trimNum(v){
+    const n = parseFloat(v);
+    if(isNaN(n)) return '0';
+    if(n === 0) return '0';
+    if(n < 0.0001) return '<0.0001';
+    return n.toLocaleString('es', { maximumFractionDigits: 4 });
+  }
+
+  // ============================================================
+  //  Selector de tokens (from / to / send)
+  // ============================================================
+  function openTokenPicker(target){
+    pickerTarget = target;
+    const listEl = document.getElementById('tokenPickerList');
+    listEl.innerHTML = '';
+    KNOWN_TOKENS.forEach(tk=>{
+      const row = document.createElement('div');
+      row.className = 'token-row';
+      row.style.cursor = 'pointer';
+      row.innerHTML = `
+        <div class="tk-icon">${tk.icon}</div>
+        <div class="tk-info">
+          <div class="tk-name">${tk.name}</div>
+          <div class="tk-sub">${tk.symbol}</div>
+        </div>`;
+      row.onclick = ()=>{
+        selectToken(target, tk);
+        closeModal('tokenPickerModal');
+      };
+      listEl.appendChild(row);
+    });
+    openModal('tokenPickerModal');
+  }
+
+  function selectToken(target, tk){
+    if(target === 'from'){
+      fromToken = tk;
+      document.getElementById('fromTokenBtn').textContent = tk.symbol + ' ▾';
+    }else if(target === 'to'){
+      toToken = tk;
+      document.getElementById('toTokenBtn').textContent = tk.symbol + ' ▾';
+    }else if(target === 'send'){
+      sendToken = tk;
+      document.getElementById('sendTokenBtn').textContent = tk.symbol + ' ▾';
+    }
+    updateSwapButton();
+  }
+
+  document.getElementById('fromTokenBtn').onclick = ()=>openTokenPicker('from');
+  document.getElementById('toTokenBtn').onclick = ()=>openTokenPicker('to');
+  document.getElementById('sendTokenBtn').onclick = ()=>openTokenPicker('send');
+
+  function flipSwap(){
+    if(!toToken) return;
+    const tmp = fromToken;
+    fromToken = toToken;
+    toToken = tmp;
+    document.getElementById('fromTokenBtn').textContent = fromToken.symbol + ' ▾';
+    document.getElementById('toTokenBtn').textContent = toToken.symbol + ' ▾';
+    document.getElementById('fromAmount').value = '';
+    document.getElementById('toAmount').value = '';
+    updateSwapButton();
+  }
+
+  function updateSwapButton(){
+    const btn = document.getElementById('btnSwap');
+    const amt = num(document.getElementById('fromAmount').value);
+    if(!toToken){
+      btn.textContent = 'Elegí el token a recibir';
+      btn.disabled = true;
+    }else if(!amt){
+      btn.textContent = 'Ingresá un monto';
+      btn.disabled = true;
+    }else{
+      btn.textContent = `Swap ${fromToken.symbol} → ${toToken.symbol}`;
+      btn.disabled = false;
+    }
+  }
+  document.getElementById('fromAmount').addEventListener('input', updateSwapButton);
+
+  // ============================================================
+  //  SWAP — vía ZorpRouter (comisión 0.30%/0.50% + delega al router real)
+  // ============================================================
+  document.getElementById('btnSwap').onclick = async ()=>{
+    if(!toToken) return;
+    const amountStr = document.getElementById('fromAmount').value;
+    const amount = num(amountStr);
+    if(!amount) return;
+
+    const k = getMiniKit();
+    if(!k){ showToast('MiniKit no disponible', true); return; }
+
+    try{
+      showToast('Buscando la mejor ruta…');
+      const amountWei = ethers.parseUnits(amountStr.replace(',', '.'), fromToken.decimals);
+
+      // NOTA: la cotización real (Quoter V3 + reservas V2) se agrega en la
+      // siguiente iteración; por ahora arma la transacción para el camino V2
+      // (WLD <-> tokens listados en Puf), que es el flujo ya verificado.
+      const deadline = Math.floor(Date.now()/1000) + 1200;
+      const path = [fromToken.address.toLowerCase(), toToken.address.toLowerCase()];
+
+      const approveIface = new ethers.Interface(ERC20_ABI);
+      const approveData = approveIface.encodeFunctionData('approve', [ZORP_ROUTER, amountWei]);
+
+      const routerIface = new ethers.Interface([
+        'function swapV2(address[] path, uint256 amountIn, uint256 amountOutMin, uint256 deadline, bool supportsFeeOnTransfer)'
+      ]);
+      const swapData = routerIface.encodeFunctionData('swapV2', [
+        path, amountWei, 0n, deadline, false
+      ]);
+
+      const res = await k.sendTransaction({
+        chainId: CHAIN_ID,
+        transactions: [
+          { to: fromToken.address.toLowerCase(), data: approveData },
+          { to: ZORP_ROUTER, data: swapData }
+        ]
+      });
+
+      const ok = (res && res.data && res.data.status === 'success')
+        || (res && res.finalPayload && res.finalPayload.status !== 'error');
+
+      if(ok){
+        showToast('Swap enviado ✅');
+        document.getElementById('fromAmount').value = '';
+        document.getElementById('toAmount').value = '';
+        setTimeout(loadBalances, 4000);
+      }else{
+        showToast('El swap no se completó', true);
+      }
+    }catch(e){
+      console.error(e);
+      showToast('Error al hacer el swap', true);
+    }
+  };
+
+  // ============================================================
+  //  ENVIAR
+  // ============================================================
+  document.getElementById('btnSend').onclick = async ()=>{
+    const to = document.getElementById('sendTo').value.trim();
+    const amountStr = document.getElementById('sendAmount').value;
+    const amount = num(amountStr);
+    if(!to || !amount){ showToast('Completá los datos', true); return; }
+    if(!to.startsWith('0x') || to.length !== 42){
+      showToast('Dirección inválida (por ahora solo 0x...)', true);
+      return;
+    }
+
+    const k = getMiniKit();
+    if(!k){ showToast('MiniKit no disponible', true); return; }
+
+    try{
+      const amountWei = ethers.parseUnits(amountStr.replace(',', '.'), sendToken.decimals);
+      const iface = new ethers.Interface([
+        'function transfer(address to, uint256 amount) returns (bool)'
+      ]);
+      const data = iface.encodeFunctionData('transfer', [to, amountWei]);
+
+      const res = await k.sendTransaction({
+        chainId: CHAIN_ID,
+        transactions: [{ to: sendToken.address.toLowerCase(), data }]
+      });
+
+      const ok = (res && res.data && res.data.status === 'success')
+        || (res && res.finalPayload && res.finalPayload.status !== 'error');
+
+      if(ok){
+        showToast('Enviado ✅');
+        closeModal('sendModal');
+        document.getElementById('sendTo').value = '';
+        document.getElementById('sendAmount').value = '';
+        setTimeout(loadBalances, 4000);
+      }else{
+        showToast('No se pudo enviar', true);
+      }
+    }catch(e){
+      console.error(e);
+      showToast('Error al enviar', true);
+    }
+  };
+
+  // ============================================================
+  //  TENDENCIAS — CoinGecko (a completar: filtrar por World Chain)
+  // ============================================================
+  let trendingLoaded = false;
+  async function loadTrending(){
+    if(trendingLoaded) return;
+    const listEl = document.getElementById('trendList');
+    try{
+      const r = await fetch('https://api.coingecko.com/api/v3/search/trending');
+      const data = await r.json();
+      const coins = (data.coins || []).slice(0, 10);
+      if(!coins.length){
+        listEl.innerHTML = '<div class="empty-state">Sin datos por ahora</div>';
+        return;
+      }
+      listEl.innerHTML = '';
+      coins.forEach((c, i)=>{
+        const item = c.item;
+        const row = document.createElement('div');
+        row.className = 'trend-row';
+        row.innerHTML = `
+          <div class="trend-rank">${i+1}</div>
+          <div class="tk-icon" style="background:transparent; border:none;">${item.symbol ? item.symbol[0] : '?'}</div>
+          <div class="tk-info">
+            <div class="tk-name">${item.name}</div>
+            <div class="tk-sub">${item.symbol}</div>
+          </div>
+          <div class="trend-chg up">🔥</div>`;
+        listEl.appendChild(row);
+      });
+      trendingLoaded = true;
+    }catch(e){
+      listEl.innerHTML = '<div class="empty-state">No se pudo cargar Tendencias</div>';
+    }
+  }
+
+  // ============================================================
+  //  arranque
+  // ============================================================
+  document.getElementById('btnConnect').onclick = connectWallet;
+  initMiniKit();
+</script>
+</body>
+</html>
