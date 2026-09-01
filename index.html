@@ -52,7 +52,7 @@
   #welcome .connect-hit{
     position:absolute;
     left:8%; right:8%;
-    top:78.5%; height:6.2%;
+    top:72%; height:6.2%;
     background:transparent; border:none;
     -webkit-tap-highlight-color:transparent;
   }
@@ -411,7 +411,9 @@
 
   const RPC_ENDPOINTS = [
     'https://worldchain-mainnet.g.alchemy.com/public',
-    'https://worldchain-rpc.publicnode.com'
+    'https://worldchain-rpc.publicnode.com',
+    'https://480.rpc.thirdweb.com',
+    'https://worldchain.drpc.org'
   ];
 
   // lista base de tokens conocidos (se amplía dinámicamente si hace falta)
@@ -576,7 +578,7 @@
     return n;
   }
 
-  function onWalletConnected(){
+  async function onWalletConnected(){
     document.getElementById('welcome').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     document.getElementById('userTag').textContent = username ? '@'+username : shortAddr(userAddress);
@@ -584,7 +586,7 @@
     document.getElementById('receiveAddr').textContent = userAddress;
     document.getElementById('profileUser').textContent = username ? '@'+username : 'Sin username';
     document.getElementById('profileAddr').textContent = userAddress;
-    initEthers();
+    await initEthers();
     loadBalances();
   }
 
@@ -605,15 +607,19 @@
 
   async function getReadProvider(){
     if(ethersProvider) return ethersProvider;
+    let lastErr = null;
     for(const url of RPC_ENDPOINTS){
       try{
         const p = new ethers.JsonRpcProvider(url);
-        await p.getBlockNumber();
+        await Promise.race([
+          p.getBlockNumber(),
+          new Promise((_, rej)=>setTimeout(()=>rej(new Error('timeout')), 6000))
+        ]);
         ethersProvider = p;
         return p;
-      }catch(e){ continue; }
+      }catch(e){ lastErr = e; continue; }
     }
-    throw new Error('Sin conexión RPC');
+    throw new Error('Sin conexión RPC: ' + (lastErr ? lastErr.message : 'desconocido'));
   }
 
   const ERC20_ABI = [
@@ -656,7 +662,10 @@
         listEl.innerHTML = '<div class="empty-state">No se encontraron tokens</div>';
       }
     }catch(e){
-      document.getElementById('tokenList').innerHTML = '<div class="empty-state">No se pudo conectar a la red. Reintentá.</div>';
+      console.error('loadBalances error', e);
+      document.getElementById('tokenList').innerHTML =
+        '<div class="empty-state">No se pudo conectar a la red: ' + (e && e.message ? e.message : 'error') +
+        '<br><br><span style="color:var(--zorp); cursor:pointer;" onclick="loadBalances()">↻ Reintentar</span></div>';
     }
   }
 
