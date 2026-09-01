@@ -51,8 +51,8 @@
   }
   #welcome .connect-hit{
     position:absolute;
-    left:8%; right:8%;
-    top:72%; height:6.2%;
+    left:6%; right:6%;
+    top:85.5%; height:6.5%;
     background:transparent; border:none;
     -webkit-tap-highlight-color:transparent;
   }
@@ -631,35 +631,81 @@
     'function allowance(address owner, address spender) view returns (uint256)'
   ];
 
+  const EXPLORER_API = 'https://worldchain-mainnet.explorer.alchemy.com/api';
+
   async function loadBalances(){
     try{
       const p = await getReadProvider();
       const listEl = document.getElementById('tokenList');
-      listEl.innerHTML = '';
-      let totalKnown = 0;
+      listEl.innerHTML = '<div class="empty-state">Buscando tus tokens…</div>';
 
-      for(const tk of KNOWN_TOKENS){
+      // 1) traer la lista de TODOS los tokens que tuvo movimiento en esta wallet
+      let discovered = [];
+      try{
+        const url = `${EXPLORER_API}?module=account&action=tokenlist&address=${userAddress}`;
+        const r = await fetch(url);
+        const data = await r.json();
+        if(data && Array.isArray(data.result)){
+          discovered = data.result.map(t => ({
+            symbol: t.symbol || '?',
+            name: t.name || t.symbol || 'Token',
+            address: (t.contractAddress || t.address || '').toLowerCase(),
+            decimals: parseInt(t.decimals || '18', 10)
+          })).filter(t => t.address);
+        }
+      }catch(e){ console.error('explorer tokenlist error', e); }
+
+      // 2) combinar con la lista base (WLD/ZORP siempre visibles aunque el explorador no los liste)
+      const byAddress = {};
+      [...KNOWN_TOKENS, ...discovered].forEach(t => { byAddress[t.address.toLowerCase()] = t; });
+      const allTokens = Object.values(byAddress);
+
+      listEl.innerHTML = '';
+      let totalUsd = 0;
+      let anyShown = false;
+
+      for(const tk of allTokens){
         try{
           const c = new ethers.Contract(tk.address.toLowerCase(), ERC20_ABI, p);
           const bal = await c.balanceOf(userAddress);
+          if(bal === 0n) continue; // no mostrar tokens en cero
           const formatted = ethers.formatUnits(bal, tk.decimals);
+
+          // precio en USD vía DexScreener (mismo patrón que EggChain), best-effort
+          let usdValue = null;
+          try{
+            const dr = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tk.address}`);
+            const dd = await dr.json();
+            const pair = (dd.pairs || []).filter(pp => pp.chainId === 'worldchain')
+              .sort((a,b) => (b.liquidity?.usd||0) - (a.liquidity?.usd||0))[0];
+            if(pair && pair.priceUsd){
+              usdValue = parseFloat(formatted) * parseFloat(pair.priceUsd);
+              totalUsd += usdValue;
+            }
+          }catch(e){ /* sin precio disponible, se omite el valor en USD */ }
+
           const row = document.createElement('div');
           row.className = 'token-row';
           row.innerHTML = `
-            <div class="tk-icon">${tk.icon}</div>
+            <div class="tk-icon">${(tk.icon || tk.symbol[0] || '?')}</div>
             <div class="tk-info">
               <div class="tk-name">${tk.name}</div>
               <div class="tk-sub">${tk.symbol}</div>
             </div>
             <div class="tk-amt">
               <div class="tk-bal">${trimNum(formatted)}</div>
+              ${usdValue !== null ? `<div class="tk-usd">$${usdValue.toLocaleString('es',{maximumFractionDigits:2})}</div>` : ''}
             </div>`;
           listEl.appendChild(row);
+          anyShown = true;
         }catch(e){ /* token sin lectura, se omite */ }
       }
 
-      if(!listEl.children.length){
-        listEl.innerHTML = '<div class="empty-state">No se encontraron tokens</div>';
+      document.getElementById('totalUsd').textContent =
+        '$' + totalUsd.toLocaleString('es', {maximumFractionDigits:2});
+
+      if(!anyShown){
+        listEl.innerHTML = '<div class="empty-state">No se encontraron tokens con saldo</div>';
       }
     }catch(e){
       console.error('loadBalances error', e);
