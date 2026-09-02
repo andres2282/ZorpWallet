@@ -31,7 +31,7 @@
     overflow-x:hidden;
     min-height:100vh;
   }
-  #app{max-width:480px; margin:0 auto; min-height:100vh; position:relative; padding-bottom:120px;}
+  #app{max-width:480px; margin:0 auto; min-height:100vh; position:relative; padding-bottom:132px;}
 
   /* ---------- estrellas de fondo (sutil, solo bienvenida) ---------- */
   .stars{position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden;}
@@ -95,7 +95,7 @@
     background:rgba(11,15,18,.97); backdrop-filter:blur(12px);
     border-top:1px solid var(--border);
     display:flex; align-items:center;
-    padding:10px 4px calc(10px + env(safe-area-inset-bottom));
+    padding:16px 4px calc(16px + env(safe-area-inset-bottom));
   }
   nav.tabbar button{
     flex:1; background:none; border:none; color:var(--text-faint);
@@ -434,6 +434,7 @@
   let userAddress = null;
   let username = null;
   let fromToken = KNOWN_TOKENS[0];
+  let walletTokens = [...KNOWN_TOKENS]; // se actualiza en loadBalances con los tokens reales de la wallet
   let toToken = null;
   let pickerTarget = null; // 'from' | 'to' | 'send'
   let sendToken = KNOWN_TOKENS[0];
@@ -665,19 +666,28 @@
 
       // 1) traer la lista de TODOS los tokens que tuvo movimiento en esta wallet
       let discovered = [];
-      try{
-        const url = `${EXPLORER_API}?module=account&action=tokenlist&address=${userAddress}`;
-        const r = await fetch(url);
-        const data = await r.json();
-        if(data && Array.isArray(data.result)){
-          discovered = data.result.map(t => ({
-            symbol: t.symbol || '?',
-            name: t.name || t.symbol || 'Token',
-            address: (t.contractAddress || t.address || '').toLowerCase(),
-            decimals: parseInt(t.decimals || '18', 10)
-          })).filter(t => t.address);
+      let explorerFailed = false;
+      for(let attempt = 0; attempt < 2 && discovered.length === 0; attempt++){
+        try{
+          const url = `${EXPLORER_API}?module=account&action=tokenlist&address=${userAddress}`;
+          const r = await fetch(url);
+          const data = await r.json();
+          if(data && Array.isArray(data.result) && data.result.length){
+            discovered = data.result.map(t => ({
+              symbol: t.symbol || '?',
+              name: t.name || t.symbol || 'Token',
+              address: (t.contractAddress || t.address || '').toLowerCase(),
+              decimals: parseInt(t.decimals || '18', 10)
+            })).filter(t => t.address);
+          }
+        }catch(e){
+          console.error('explorer tokenlist error (intento ' + attempt + ')', e);
+          explorerFailed = true;
         }
-      }catch(e){ console.error('explorer tokenlist error', e); }
+        if(discovered.length === 0 && attempt === 0){
+          await new Promise(r => setTimeout(r, 800)); // pequeña espera antes de reintentar
+        }
+      }
 
       // 2) combinar con la lista base (WLD/ZORP siempre visibles aunque el explorador no los liste)
       const byAddress = {};
@@ -687,6 +697,7 @@
       listEl.innerHTML = '';
       let totalUsd = 0;
       let anyShown = false;
+      const shownTokens = [];
 
       for(const tk of allTokens){
         try{
@@ -715,12 +726,13 @@
 
           if(usdValue !== null) totalUsd += usdValue;
 
-          const row = document.createElement('div');
-          row.className = 'token-row';
           const geckoUrl = await getGeckoIcon(tk.address);
           const iconHtml = geckoUrl
             ? `<img src="${geckoUrl}" alt="${tk.symbol}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.parentElement.innerHTML='${(tk.symbol||'?')[0]}'">`
             : tkIconHtml(tk);
+
+          const row = document.createElement('div');
+          row.className = 'token-row';
           row.innerHTML = `
             <div class="tk-icon">${iconHtml}</div>
             <div class="tk-info">
@@ -733,8 +745,13 @@
             </div>`;
           listEl.appendChild(row);
           anyShown = true;
+
+          // guardar para el selector de Swap/Enviar, con el ícono (URL de gecko si existe) resuelto
+          shownTokens.push({ ...tk, icon: geckoUrl || tk.icon, balance: formatted });
         }catch(e){ /* token sin lectura, se omite */ }
       }
+
+      walletTokens = shownTokens.length ? shownTokens : walletTokens;
 
       document.getElementById('totalUsd').textContent =
         '$' + totalUsd.toLocaleString('es', {maximumFractionDigits:2});
@@ -742,6 +759,12 @@
       if(!anyShown){
         listEl.innerHTML = '<div class="empty-state">No se encontraron tokens con saldo</div>';
       }
+
+      // diagnóstico temporal: cuántos tokens trajo el explorador vs cuántos pasaron el filtro
+      const diag = document.createElement('div');
+      diag.style.cssText = 'font-size:10px;color:var(--text-faint);text-align:center;padding-top:8px;';
+      diag.textContent = `(diag: explorador encontró ${discovered.length} token(s)${explorerFailed ? ', falló al menos 1 intento' : ''}, ${shownTokens.length} pasaron el filtro)`;
+      listEl.appendChild(diag);
     }catch(e){
       console.error('loadBalances error', e);
       document.getElementById('tokenList').innerHTML =
@@ -752,8 +775,8 @@
 
   function tkIconHtml(tk){
     const icon = tk.icon;
-    if(icon && typeof icon === 'string' && icon.startsWith('data:')){
-      return `<img src="${icon}" alt="${tk.symbol}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+    if(icon && typeof icon === 'string' && (icon.startsWith('data:') || icon.startsWith('http'))){
+      return `<img src="${icon}" alt="${tk.symbol}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.parentElement.textContent='${(tk.symbol||'?')[0]}'">`;
     }
     return icon || (tk.symbol ? tk.symbol[0] : '?');
   }
@@ -773,7 +796,8 @@
     pickerTarget = target;
     const listEl = document.getElementById('tokenPickerList');
     listEl.innerHTML = '';
-    KNOWN_TOKENS.forEach(tk=>{
+    const tokensToShow = walletTokens.length ? walletTokens : KNOWN_TOKENS;
+    tokensToShow.forEach(tk=>{
       const row = document.createElement('div');
       row.className = 'token-row';
       row.style.cursor = 'pointer';
@@ -781,7 +805,7 @@
         <div class="tk-icon">${tkIconHtml(tk)}</div>
         <div class="tk-info">
           <div class="tk-name">${tk.name}</div>
-          <div class="tk-sub">${tk.symbol}</div>
+          <div class="tk-sub">${tk.symbol}${tk.balance ? ' · ' + trimNum(tk.balance) : ''}</div>
         </div>`;
       row.onclick = ()=>{
         selectToken(target, tk);
@@ -789,6 +813,9 @@
       };
       listEl.appendChild(row);
     });
+    if(!tokensToShow.length){
+      listEl.innerHTML = '<div class="empty-state">No se encontraron tokens</div>';
+    }
     openModal('tokenPickerModal');
   }
 
@@ -796,9 +823,11 @@
     if(target === 'from'){
       fromToken = tk;
       document.getElementById('fromTokenBtn').textContent = tk.symbol + ' ▾';
+      document.getElementById('fromBalLbl').textContent = 'Saldo: ' + trimNum(tk.balance || 0);
     }else if(target === 'to'){
       toToken = tk;
       document.getElementById('toTokenBtn').textContent = tk.symbol + ' ▾';
+      document.getElementById('toBalLbl').textContent = 'Saldo: ' + trimNum(tk.balance || 0);
     }else if(target === 'send'){
       sendToken = tk;
       document.getElementById('sendTokenBtn').textContent = tk.symbol + ' ▾';
