@@ -322,6 +322,13 @@
         <div style="font-size:14px; margin-bottom:4px;" id="profileUser">—</div>
         <div style="font-size:12px; color:var(--text-faint); word-break:break-all;" id="profileAddr">—</div>
       </div>
+
+      <div class="card">
+        <div class="card-title">🔧 Diagnóstico</div>
+        <button class="btn secondary" id="btnDiag" style="margin-bottom:10px;">Probar conexión y escanear tokens</button>
+        <div id="diagOutput" style="font-size:11px; line-height:1.6; color:var(--text-dim); white-space:pre-wrap; word-break:break-all;"></div>
+      </div>
+
       <div class="card">
         <div class="card-title">Invitá y ganá</div>
         <div class="empty-state">Próximamente</div>
@@ -406,6 +413,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
+  const BUILD_ID = 'zorp-b1-diag-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -1022,6 +1030,84 @@
   // ============================================================
   //  arranque
   // ============================================================
+  // ============================================================
+  //  DIAGNÓSTICO — prueba cada pieza del sistema y muestra el resultado real
+  // ============================================================
+  document.getElementById('btnDiag').onclick = async () => {
+    const out = document.getElementById('diagOutput');
+    const lines = [];
+    const log = (msg) => { lines.push(msg); out.textContent = lines.join('\n'); };
+
+    log('Iniciando diagnóstico...');
+
+    // 1) wallet conectada
+    log(userAddress ? `✅ Wallet conectada: ${shortAddr(userAddress)}` : '❌ No hay wallet conectada');
+    if(!userAddress) return;
+
+    // 2) ethers cargado
+    log(window.ethers ? '✅ ethers.js cargado' : '❌ ethers.js NO cargado');
+
+    // 3) RPC
+    let p;
+    try{
+      p = await getReadProvider();
+      const bn = await p.getBlockNumber();
+      log(`✅ RPC conectado, bloque actual: ${bn}`);
+    }catch(e){
+      log(`❌ RPC falló: ${e.message}`);
+      return;
+    }
+
+    // 4) explorador (lista de tokens)
+    try{
+      const url = `${EXPLORER_API}?module=account&action=tokenlist&address=${userAddress}`;
+      const r = await fetch(url);
+      const data = await r.json();
+      const count = (data && Array.isArray(data.result)) ? data.result.length : 0;
+      log(`✅ Explorador respondió: ${count} token(s) encontrados en la wallet`);
+      if(count > 0){
+        const symbols = data.result.slice(0, 15).map(t => t.symbol || '?').join(', ');
+        log(`   Símbolos: ${symbols}${count > 15 ? '...' : ''}`);
+      }
+    }catch(e){
+      log(`❌ Explorador falló: ${e.message}`);
+    }
+
+    // 5) balance real de WLD y ZORP por RPC directo
+    try{
+      const c1 = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, p);
+      const bal1 = await c1.balanceOf(userAddress);
+      log(`✅ Balance WLD (RPC directo): ${ethers.formatUnits(bal1, 18)}`);
+    }catch(e){
+      log(`❌ Error leyendo balance WLD: ${e.message}`);
+    }
+    try{
+      const c2 = new ethers.Contract(ZORP_TOKEN, ERC20_ABI, p);
+      const bal2 = await c2.balanceOf(userAddress);
+      log(`✅ Balance ZORP (RPC directo): ${ethers.formatUnits(bal2, 18)}`);
+    }catch(e){
+      log(`❌ Error leyendo balance ZORP: ${e.message}`);
+    }
+
+    // 6) DexScreener para ZORP (sabemos que tiene pool)
+    try{
+      const dr = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${ZORP_TOKEN}`);
+      const dd = await dr.json();
+      const pair = (dd.pairs || []).filter(pp => pp.chainId === 'worldchain')[0];
+      if(pair){
+        log(`✅ DexScreener ZORP: precio $${pair.priceUsd}, liquidez $${pair.liquidity?.usd || 0}`);
+      }else{
+        log('⚠️ DexScreener no devolvió pool de ZORP en worldchain');
+      }
+    }catch(e){
+      log(`❌ DexScreener falló: ${e.message}`);
+    }
+
+    // 7) versión del archivo (para confirmar que Vercel sirve el archivo correcto)
+    log(`\n📦 Build: ${BUILD_ID}`);
+    log('\nDiagnóstico completo.');
+  };
+
   document.getElementById('btnConnect').onclick = connectWallet;
 </script>
 
