@@ -426,7 +426,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b6-syncbal-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b7-realquote-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -954,6 +954,7 @@
       document.getElementById('sendTokenBtn').innerHTML = tkSelectHtml(tk);
     }
     updateSwapButton();
+    if(target === 'from' || target === 'to') refreshQuote();
   }
 
   document.getElementById('fromTokenBtn').onclick = ()=>openTokenPicker('from');
@@ -981,13 +982,80 @@
     }else if(!amt){
       btn.textContent = 'Ingresá un monto';
       btn.disabled = true;
+    }else if(quoteState.loading){
+      btn.textContent = 'Cotizando…';
+      btn.disabled = true;
+    }else if(quoteState.noRoute){
+      btn.textContent = 'Sin liquidez para este par';
+      btn.disabled = true;
     }else{
       btn.textContent = `Swap ${fromToken.symbol} → ${toToken.symbol}`;
       btn.disabled = false;
     }
   }
-  document.getElementById('fromAmount').addEventListener('input', updateSwapButton);
 
+  // ---- cotización real vía DexScreener: precio en USD de cada token, estimación por regla de tres ----
+  const quoteState = { loading:false, noRoute:false, outAmount:null };
+  let quoteDebounceTimer = null;
+
+  async function getUsdPrice(address){
+    try{
+      const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`);
+      const d = await r.json();
+      const pair = (d.pairs || []).filter(p => p.chainId === 'worldchain')
+        .sort((a,b) => (b.liquidity?.usd||0) - (a.liquidity?.usd||0))[0];
+      if(pair && pair.priceUsd && (pair.liquidity?.usd || 0) > 100){
+        return parseFloat(pair.priceUsd);
+      }
+      return null;
+    }catch(e){ return null; }
+  }
+
+  async function refreshQuote(){
+    const amt = num(document.getElementById('fromAmount').value);
+    const toAmountEl = document.getElementById('toAmount');
+    if(!toToken || !amt){
+      quoteState.noRoute = false;
+      quoteState.outAmount = null;
+      toAmountEl.value = '';
+      updateSwapButton();
+      return;
+    }
+
+    quoteState.loading = true;
+    quoteState.noRoute = false;
+    updateSwapButton();
+
+    const [priceFrom, priceTo] = await Promise.all([
+      getUsdPrice(fromToken.address),
+      getUsdPrice(toToken.address)
+    ]);
+
+    quoteState.loading = false;
+
+    if(!priceFrom || !priceTo){
+      quoteState.noRoute = true;
+      quoteState.outAmount = null;
+      toAmountEl.value = '';
+      updateSwapButton();
+      return;
+    }
+
+    // valor en USD de lo que se paga, menos la comisión del router, convertido al token de salida
+    const feeBps = 50; // 0.50% (el contrato aplica 0.30% si tenés 100.000+ $ZORP, esto es una estimación conservadora)
+    const usdValue = amt * priceFrom * (1 - feeBps/10000);
+    const estimatedOut = usdValue / priceTo;
+
+    quoteState.outAmount = estimatedOut;
+    toAmountEl.value = trimNum(estimatedOut);
+    updateSwapButton();
+  }
+
+  document.getElementById('fromAmount').addEventListener('input', () => {
+    updateSwapButton();
+    clearTimeout(quoteDebounceTimer);
+    quoteDebounceTimer = setTimeout(refreshQuote, 600);
+  });
   document.querySelectorAll('.pct-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const pct = parseInt(btn.dataset.pct, 10);
@@ -1010,13 +1078,21 @@
     const amountStr = document.getElementById('fromAmount').value;
     const amount = num(amountStr);
     if(!amount) return;
+    if(quoteState.noRoute || quoteState.outAmount === null){
+      showToast('No se encontró una cotización válida para este par', true);
+      return;
+    }
 
     const k = getMiniKit();
     if(!k){ showToast('MiniKit no disponible', true); return; }
 
     try{
-      showToast('Buscando la mejor ruta…');
+      showToast('Preparando swap…');
       const amountWei = ethers.parseUnits(amountStr.replace(',', '.'), fromToken.decimals);
+
+      // slippage 5%: protege contra que el precio se mueva entre la cotización y la confirmación
+      const minOut = quoteState.outAmount * 0.95;
+      const amountOutMin = ethers.parseUnits(minOut.toFixed(toToken.decimals > 18 ? 18 : toToken.decimals), toToken.decimals);
 
       // NOTA: la cotización real (Quoter V3 + reservas V2) se agrega en la
       // siguiente iteración; por ahora arma la transacción para el camino V2
@@ -1031,7 +1107,7 @@
         'function swapV2(address[] path, uint256 amountIn, uint256 amountOutMin, uint256 deadline, bool supportsFeeOnTransfer)'
       ]);
       const swapData = routerIface.encodeFunctionData('swapV2', [
-        path, amountWei, 0n, deadline, false
+        path, amountWei, amountOutMin, deadline, false
       ]);
 
       const res = await k.sendTransaction({
