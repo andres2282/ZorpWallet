@@ -426,7 +426,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b5-fast-pct-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b6-syncbal-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -855,6 +855,21 @@
       });
 
       walletTokens = shownTokens.length ? shownTokens : walletTokens;
+
+      // sincronizar los tokens ya elegidos en Swap/Enviar con su saldo real recién cargado
+      const findByAddr = (addr) => walletTokens.find(t => t.address.toLowerCase() === addr.toLowerCase());
+      if(fromToken){
+        const updated = findByAddr(fromToken.address);
+        if(updated){ fromToken = updated; document.getElementById('fromBalLbl').textContent = 'Saldo: ' + trimNum(updated.balance || 0); }
+      }
+      if(toToken){
+        const updated = findByAddr(toToken.address);
+        if(updated){ toToken = updated; document.getElementById('toBalLbl').textContent = 'Saldo: ' + trimNum(updated.balance || 0); }
+      }
+      if(sendToken){
+        const updated = findByAddr(sendToken.address);
+        if(updated){ sendToken = updated; }
+      }
 
       const totalText = '$' + totalUsd.toLocaleString('es', {maximumFractionDigits:2});
       const totalEl = document.getElementById('totalUsd');
