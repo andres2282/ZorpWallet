@@ -413,7 +413,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b1-diag-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b2-fastload-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -703,64 +703,96 @@
       [...KNOWN_TOKENS, ...discovered].forEach(t => { byAddress[t.address.toLowerCase()] = t; });
       const allTokens = Object.values(byAddress);
 
+      listEl.innerHTML = `<div class="empty-state">Leyendo saldos (${allTokens.length} tokens)…</div>`;
+
+      // --- FASE 1: leer balances en paralelo (con límite de concurrencia) para no trabar el navegador ---
+      async function readBalancesInBatches(tokens, batchSize){
+        const results = [];
+        for(let i = 0; i < tokens.length; i += batchSize){
+          const batch = tokens.slice(i, i + batchSize);
+          const batchResults = await Promise.all(batch.map(async (tk) => {
+            try{
+              const c = new ethers.Contract(tk.address.toLowerCase(), ERC20_ABI, p);
+              const bal = await c.balanceOf(userAddress);
+              return { tk, bal };
+            }catch(e){
+              return { tk, bal: null };
+            }
+          }));
+          results.push(...batchResults);
+        }
+        return results;
+      }
+
+      const balanceResults = await readBalancesInBatches(allTokens, 12);
+      const withBalance = balanceResults.filter(r => r.bal !== null && r.bal > 0n);
+
+      listEl.innerHTML = `<div class="empty-state">Buscando precios (${withBalance.length} tokens con saldo)…</div>`;
+
+      // --- FASE 2: solo para los que tienen saldo, buscar precio en paralelo ---
+      async function fetchPriceInBatches(items, batchSize){
+        const results = [];
+        for(let i = 0; i < items.length; i += batchSize){
+          const batch = items.slice(i, i + batchSize);
+          const batchResults = await Promise.all(batch.map(async ({tk, bal}) => {
+            const formatted = ethers.formatUnits(bal, tk.decimals);
+            let usdValue = null;
+            let hasLiquidity = false;
+            try{
+              const dr = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tk.address}`);
+              const dd = await dr.json();
+              const pair = (dd.pairs || []).filter(pp => pp.chainId === 'worldchain')
+                .sort((a,b) => (b.liquidity?.usd||0) - (a.liquidity?.usd||0))[0];
+              if(pair && pair.priceUsd && (pair.liquidity?.usd || 0) > 100){
+                usdValue = parseFloat(formatted) * parseFloat(pair.priceUsd);
+                hasLiquidity = true;
+              }
+            }catch(e){ /* sin precio disponible */ }
+            return { tk, formatted, usdValue, hasLiquidity };
+          }));
+          results.push(...batchResults);
+        }
+        return results;
+      }
+
+      const priced = await fetchPriceInBatches(withBalance, 8);
+
       listEl.innerHTML = '';
       let totalUsd = 0;
       let anyShown = false;
       const shownTokens = [];
 
-      for(const tk of allTokens){
-        try{
-          const c = new ethers.Contract(tk.address.toLowerCase(), ERC20_ABI, p);
-          const bal = await c.balanceOf(userAddress);
-          if(bal === 0n) continue; // no mostrar tokens en cero
-          const formatted = ethers.formatUnits(bal, tk.decimals);
+      for(const { tk, formatted, usdValue, hasLiquidity } of priced){
+        // filtro: solo tokens con pool real y valor >= $0.01 en la wallet (para no listar polvo/spam).
+        // WLD y ZORP son excepción: siempre se muestran.
+        const isCore = tk.address.toLowerCase() === WLD_ADDRESS.toLowerCase()
+          || tk.address.toLowerCase() === ZORP_TOKEN.toLowerCase();
+        if(!isCore && (!hasLiquidity || usdValue === null || usdValue < 0.01)) continue;
 
-          // precio en USD vía DexScreener (mismo patrón que EggChain), best-effort
-          let usdValue = null;
-          let hasLiquidity = false;
-          try{
-            const dr = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tk.address}`);
-            const dd = await dr.json();
-            const pair = (dd.pairs || []).filter(pp => pp.chainId === 'worldchain')
-              .sort((a,b) => (b.liquidity?.usd||0) - (a.liquidity?.usd||0))[0];
-            // exigimos liquidez real en el pool (no solo que exista un precio, que puede venir en 0)
-            if(pair && pair.priceUsd && (pair.liquidity?.usd || 0) > 100){
-              usdValue = parseFloat(formatted) * parseFloat(pair.priceUsd);
-              hasLiquidity = true;
-            }
-          }catch(e){ /* sin precio disponible, se omite el valor en USD */ }
+        if(usdValue !== null) totalUsd += usdValue;
 
-          // filtro: solo tokens con pool real y valor >= $0.01 en la wallet (para no listar polvo/spam).
-          // WLD y ZORP son excepción: siempre se muestran.
-          const isCore = tk.address.toLowerCase() === WLD_ADDRESS.toLowerCase()
-            || tk.address.toLowerCase() === ZORP_TOKEN.toLowerCase();
-          if(!isCore && (!hasLiquidity || usdValue === null || usdValue < 0.01)) continue;
+        const geckoUrl = await getGeckoIcon(tk.address);
+        const iconHtml = geckoUrl
+          ? `<img src="${geckoUrl}" alt="${tk.symbol}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.parentElement.innerHTML='${(tk.symbol||'?')[0]}'">`
+          : tkIconHtml(tk);
 
-          if(usdValue !== null) totalUsd += usdValue;
+        const row = document.createElement('div');
+        row.className = 'token-row';
+        row.innerHTML = `
+          <div class="tk-icon">${iconHtml}</div>
+          <div class="tk-info">
+            <div class="tk-name">${tk.name}</div>
+            <div class="tk-sub">${tk.symbol}</div>
+          </div>
+          <div class="tk-amt">
+            <div class="tk-bal">${trimNum(formatted)}</div>
+            ${usdValue !== null ? `<div class="tk-usd">$${usdValue.toLocaleString('es',{maximumFractionDigits:2})}</div>` : ''}
+          </div>`;
+        listEl.appendChild(row);
+        anyShown = true;
 
-          const geckoUrl = await getGeckoIcon(tk.address);
-          const iconHtml = geckoUrl
-            ? `<img src="${geckoUrl}" alt="${tk.symbol}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.parentElement.innerHTML='${(tk.symbol||'?')[0]}'">`
-            : tkIconHtml(tk);
-
-          const row = document.createElement('div');
-          row.className = 'token-row';
-          row.innerHTML = `
-            <div class="tk-icon">${iconHtml}</div>
-            <div class="tk-info">
-              <div class="tk-name">${tk.name}</div>
-              <div class="tk-sub">${tk.symbol}</div>
-            </div>
-            <div class="tk-amt">
-              <div class="tk-bal">${trimNum(formatted)}</div>
-              ${usdValue !== null ? `<div class="tk-usd">$${usdValue.toLocaleString('es',{maximumFractionDigits:2})}</div>` : ''}
-            </div>`;
-          listEl.appendChild(row);
-          anyShown = true;
-
-          // guardar para el selector de Swap/Enviar, con el ícono (URL de gecko si existe) resuelto
-          shownTokens.push({ ...tk, icon: geckoUrl || tk.icon, balance: formatted });
-        }catch(e){ /* token sin lectura, se omite */ }
+        // guardar para el selector de Swap/Enviar, con el ícono (URL de gecko si existe) resuelto
+        shownTokens.push({ ...tk, icon: geckoUrl || tk.icon, balance: formatted });
       }
 
       walletTokens = shownTokens.length ? shownTokens : walletTokens;
