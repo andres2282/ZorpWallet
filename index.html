@@ -262,6 +262,7 @@
         </div>
         <div class="amount" id="totalUsd">$0.00</div>
         <div class="usd" id="walletAddrShort">—</div>
+        <div class="usd" id="totalDiag" style="font-size:10px;"></div>
       </div>
 
       <div class="quick-actions">
@@ -718,11 +719,11 @@
             }
           }catch(e){ /* sin precio disponible, se omite el valor en USD */ }
 
-          // filtro: solo tokens con pool real (precio encontrado) y valor >= $10 en la wallet.
-          // WLD y ZORP son excepción: siempre se muestran aunque estén por debajo del umbral.
+          // filtro: solo tokens con pool real (precio encontrado en DexScreener).
+          // WLD y ZORP son excepción: siempre se muestran aunque no tengan pool.
           const isCore = tk.address.toLowerCase() === WLD_ADDRESS.toLowerCase()
             || tk.address.toLowerCase() === ZORP_TOKEN.toLowerCase();
-          if(!isCore && (usdValue === null || usdValue < 10)) continue;
+          if(!isCore && usdValue === null) continue;
 
           if(usdValue !== null) totalUsd += usdValue;
 
@@ -753,8 +754,17 @@
 
       walletTokens = shownTokens.length ? shownTokens : walletTokens;
 
-      document.getElementById('totalUsd').textContent =
-        '$' + totalUsd.toLocaleString('es', {maximumFractionDigits:2});
+      console.log('DEBUG totalUsd final:', totalUsd, 'shownTokens:', shownTokens.length);
+      const totalText = '$' + totalUsd.toLocaleString('es', {maximumFractionDigits:2});
+      console.log('DEBUG totalText:', totalText);
+      const totalEl = document.getElementById('totalUsd');
+      if(totalEl){
+        totalEl.textContent = totalText;
+      }else{
+        console.error('DEBUG: no se encontró el elemento #totalUsd en el DOM');
+      }
+      const diagEl = document.getElementById('totalDiag');
+      if(diagEl) diagEl.textContent = `(diag total: ${totalUsd} → "${totalText}")`;
 
       if(!anyShown){
         listEl.innerHTML = '<div class="empty-state">No se encontraron tokens con saldo</div>';
