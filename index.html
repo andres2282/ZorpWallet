@@ -434,7 +434,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b10-diagswap-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b11-bigintfix-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -789,7 +789,7 @@
                 known ? Promise.resolve(known.name) : c.name().catch(() => 'Token'),
                 known ? Promise.resolve(known.decimals) : c.decimals().catch(() => 18)
               ]);
-              return { address: addr, bal, symbol, name, decimals, isCore, icon: known ? known.icon : null };
+              return { address: addr, bal, symbol, name, decimals: Number(decimals), isCore, icon: known ? known.icon : null };
             }catch(e){
               return { address: addr, bal: null };
             }
@@ -1138,7 +1138,7 @@
 
       // slippage 5%: protege contra que el precio se mueva entre la cotización y la confirmación
       const minOut = quoteState.outAmount * 0.95;
-      const amountOutMin = ethers.parseUnits(minOut.toFixed(toToken.decimals > 18 ? 18 : toToken.decimals), toToken.decimals);
+      const amountOutMin = ethers.parseUnits(minOut.toFixed(Number(toToken.decimals) > 18 ? 18 : Number(toToken.decimals)), toToken.decimals);
 
       const deadline = Math.floor(Date.now()/1000) + 1200;
 
