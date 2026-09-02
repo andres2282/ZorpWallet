@@ -413,7 +413,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b2-fastload-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b3-liqfilter-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -743,9 +743,13 @@
               const dd = await dr.json();
               const pair = (dd.pairs || []).filter(pp => pp.chainId === 'worldchain')
                 .sort((a,b) => (b.liquidity?.usd||0) - (a.liquidity?.usd||0))[0];
-              if(pair && pair.priceUsd && (pair.liquidity?.usd || 0) > 100){
-                usdValue = parseFloat(formatted) * parseFloat(pair.priceUsd);
-                hasLiquidity = true;
+              if(pair && pair.priceUsd && (pair.liquidity?.usd || 0) > 1000){
+                // señal extra de pool "vivo": movimiento reciente (24h) real, no solo liquidez estática vieja
+                const vol24h = pair.volume?.h24 || 0;
+                if(vol24h > 10){
+                  usdValue = parseFloat(formatted) * parseFloat(pair.priceUsd);
+                  hasLiquidity = true;
+                }
               }
             }catch(e){ /* sin precio disponible */ }
             return { tk, formatted, usdValue, hasLiquidity };
@@ -761,13 +765,17 @@
       let totalUsd = 0;
       let anyShown = false;
       const shownTokens = [];
+      const rejected = [];
 
       for(const { tk, formatted, usdValue, hasLiquidity } of priced){
         // filtro: solo tokens con pool real y valor >= $0.01 en la wallet (para no listar polvo/spam).
         // WLD y ZORP son excepción: siempre se muestran.
         const isCore = tk.address.toLowerCase() === WLD_ADDRESS.toLowerCase()
           || tk.address.toLowerCase() === ZORP_TOKEN.toLowerCase();
-        if(!isCore && (!hasLiquidity || usdValue === null || usdValue < 0.01)) continue;
+        if(!isCore && (!hasLiquidity || usdValue === null || usdValue < 0.01)){
+          rejected.push(`${tk.symbol}(bal:${trimNum(formatted)},${hasLiquidity ? 'usd:$'+(usdValue?usdValue.toFixed(4):'?') : 'sin liq/vol'})`);
+          continue;
+        }
 
         if(usdValue !== null) totalUsd += usdValue;
 
@@ -815,8 +823,12 @@
 
       // diagnóstico temporal: cuántos tokens trajo el explorador vs cuántos pasaron el filtro
       const diag = document.createElement('div');
-      diag.style.cssText = 'font-size:10px;color:var(--text-faint);text-align:center;padding-top:8px;';
-      diag.textContent = `(diag: explorador encontró ${discovered.length} token(s)${explorerFailed ? ', falló al menos 1 intento' : ''}, ${shownTokens.length} pasaron el filtro)`;
+      diag.style.cssText = 'font-size:10px;color:var(--text-faint);text-align:left;padding-top:8px;word-break:break-all;';
+      let diagText = `(diag: explorador encontró ${discovered.length} token(s)${explorerFailed ? ', falló al menos 1 intento' : ''}, ${withBalance.length} con saldo>0, ${shownTokens.length} pasaron el filtro)`;
+      if(rejected.length){
+        diagText += `\nDescartados con saldo (motivo): ${rejected.slice(0,20).join(' · ')}${rejected.length>20?'...':''}`;
+      }
+      diag.textContent = diagText;
       listEl.appendChild(diag);
     }catch(e){
       console.error('loadBalances error', e);
