@@ -190,6 +190,13 @@
     display:flex; align-items:center; gap:6px; background:var(--panel); border:1px solid var(--border);
     border-radius:20px; padding:7px 12px; font-size:13px; font-weight:700; white-space:nowrap;
   }
+  .tk-select img.tk-select-icon{width:18px; height:18px; border-radius:50%; object-fit:cover; flex-shrink:0;}
+  .pct-row{display:flex; gap:6px; margin-top:8px;}
+  .pct-btn{
+    flex:1; background:var(--panel); border:1px solid var(--border); border-radius:8px;
+    padding:6px 4px; font-size:11px; font-weight:700; color:var(--text-dim);
+  }
+  .pct-btn:active{background:var(--zorp-dim); color:#08130a;}
   .swap-arrow{
     width:38px; height:38px; border-radius:50%; background:var(--panel); border:3px solid var(--bg);
     display:flex; align-items:center; justify-content:center; margin:-12px auto; position:relative; z-index:2;
@@ -289,6 +296,12 @@
           <div class="row2">
             <input type="text" inputmode="decimal" placeholder="0.0" id="fromAmount">
             <div class="tk-select" id="fromTokenBtn">WLD ▾</div>
+          </div>
+          <div class="pct-row">
+            <button class="pct-btn" data-pct="25">25%</button>
+            <button class="pct-btn" data-pct="50">50%</button>
+            <button class="pct-btn" data-pct="75">75%</button>
+            <button class="pct-btn" data-pct="100">MAX</button>
           </div>
         </div>
         <div class="swap-arrow" onclick="flipSwap()">⇅</div>
@@ -413,7 +426,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b4-curated-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b5-fast-pct-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -664,6 +677,8 @@
     document.getElementById('receiveAddr').textContent = userAddress;
     document.getElementById('profileUser').textContent = username ? '@'+username : 'Sin username';
     document.getElementById('profileAddr').textContent = userAddress;
+    document.getElementById('fromTokenBtn').innerHTML = tkSelectHtml(fromToken);
+    document.getElementById('sendTokenBtn').innerHTML = tkSelectHtml(sendToken);
     await initEthers();
     loadBalances();
   }
@@ -768,7 +783,7 @@
         return results;
       }
 
-      const results = await readTokenInBatches(candidateAddresses, 10);
+      const results = await readTokenInBatches(candidateAddresses, 30);
       const withBalance = results.filter(r => r.bal !== null && r.bal > 0n);
 
       listEl.innerHTML = `<div class="empty-state">Buscando precios (${withBalance.length} tokens con saldo)…</div>`;
@@ -797,18 +812,23 @@
         return out;
       }
 
-      const priced = await fetchPricesInBatches(withBalance, 8);
+      const priced = await fetchPricesInBatches(withBalance, 20);
 
       listEl.innerHTML = '';
       let totalUsd = 0;
       let anyShown = false;
       const shownTokens = [];
 
-      for(const r of priced){
+      // resolver todos los íconos de GeckoTerminal EN PARALELO (evita hacerlo uno por uno)
+      const geckoUrls = await Promise.all(priced.map(r =>
+        (r.icon && r.icon.startsWith('data:')) ? Promise.resolve(null) : getGeckoIcon(r.address)
+      ));
+
+      priced.forEach((r, i) => {
+        const geckoUrl = geckoUrls[i];
         const formatted = ethers.formatUnits(r.bal, r.decimals);
         if(r.usdValue !== null) totalUsd += r.usdValue;
 
-        const geckoUrl = r.icon && r.icon.startsWith('data:') ? null : await getGeckoIcon(r.address);
         const tk = { symbol: r.symbol, name: r.name, address: r.address, decimals: r.decimals, icon: r.icon };
         const iconHtml = r.icon
           ? tkIconHtml(tk)
@@ -832,7 +852,7 @@
         anyShown = true;
 
         shownTokens.push({ ...tk, icon: r.icon || geckoUrl || tk.icon, balance: formatted });
-      }
+      });
 
       walletTokens = shownTokens.length ? shownTokens : walletTokens;
 
@@ -897,18 +917,26 @@
     openModal('tokenPickerModal');
   }
 
+  function tkSelectHtml(tk){
+    const icon = tk.icon;
+    const imgHtml = (icon && typeof icon === 'string' && (icon.startsWith('data:') || icon.startsWith('http')))
+      ? `<img class="tk-select-icon" src="${icon}" alt="${tk.symbol}" onerror="this.remove()">`
+      : '';
+    return `${imgHtml}${tk.symbol} ▾`;
+  }
+
   function selectToken(target, tk){
     if(target === 'from'){
       fromToken = tk;
-      document.getElementById('fromTokenBtn').textContent = tk.symbol + ' ▾';
+      document.getElementById('fromTokenBtn').innerHTML = tkSelectHtml(tk);
       document.getElementById('fromBalLbl').textContent = 'Saldo: ' + trimNum(tk.balance || 0);
     }else if(target === 'to'){
       toToken = tk;
-      document.getElementById('toTokenBtn').textContent = tk.symbol + ' ▾';
+      document.getElementById('toTokenBtn').innerHTML = tkSelectHtml(tk);
       document.getElementById('toBalLbl').textContent = 'Saldo: ' + trimNum(tk.balance || 0);
     }else if(target === 'send'){
       sendToken = tk;
-      document.getElementById('sendTokenBtn').textContent = tk.symbol + ' ▾';
+      document.getElementById('sendTokenBtn').innerHTML = tkSelectHtml(tk);
     }
     updateSwapButton();
   }
@@ -944,6 +972,20 @@
     }
   }
   document.getElementById('fromAmount').addEventListener('input', updateSwapButton);
+
+  document.querySelectorAll('.pct-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pct = parseInt(btn.dataset.pct, 10);
+      const bal = parseFloat(fromToken.balance || 0);
+      if(!bal){
+        showToast('No tenés saldo de ' + fromToken.symbol, true);
+        return;
+      }
+      const amount = pct === 100 ? bal : bal * (pct / 100);
+      document.getElementById('fromAmount').value = amount.toString();
+      updateSwapButton();
+    });
+  });
 
   // ============================================================
   //  SWAP — vía ZorpRouter (comisión 0.30%/0.50% + delega al router real)
