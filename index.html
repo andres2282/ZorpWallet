@@ -434,7 +434,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b11-bigintfix-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b12-liqcheck-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -1429,6 +1429,31 @@
       if(route.type === 'none'){
         log('❌ No se encontró ningún pool para este par (ni V3 ni V2)');
         return;
+      }
+
+      // 3.5) si es V3, verificar que el pool tenga liquidez REAL (no solo que exista)
+      if(route.type === 'v3'){
+        try{
+          const poolAbi = ['function liquidity() view returns (uint128)', 'function slot0() view returns (uint160,int24,uint16,uint16,uint16,uint8,bool)'];
+          const factoryAbi = ['function getPool(address,address,uint24) view returns (address)'];
+          const factory = new ethers.Contract(UNISWAP_V3_FACTORY, factoryAbi, p);
+          const poolAddr = await factory.getPool(WLD_ADDRESS.toLowerCase(), targetToken.address.toLowerCase(), route.poolFee);
+          log(`Dirección del pool V3: ${poolAddr}`);
+          const poolContract = new ethers.Contract(poolAddr, poolAbi, p);
+          const liq = await poolContract.liquidity();
+          log(`Liquidez actual del pool: ${liq.toString()}`);
+          if(liq === 0n){
+            log('❌ El pool EXISTE pero tiene liquidez CERO — por eso revierte el swap');
+          }
+          try{
+            const slot0 = await poolContract.slot0();
+            log(`slot0 (precio actual): sqrtPriceX96=${slot0[0].toString()}`);
+          }catch(e){
+            log(`⚠️ No se pudo leer slot0: ${e.message}`);
+          }
+        }catch(e){
+          log(`⚠️ No se pudo verificar liquidez del pool: ${e.message}`);
+        }
       }
 
       // 4) SIMULACIÓN real del contrato con staticCall — no firma, no gasta gas, muestra el revert real
