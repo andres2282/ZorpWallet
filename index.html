@@ -434,7 +434,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b13-directrouter-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b14-nodeadline-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -738,7 +738,8 @@
     'function symbol() view returns (string)',
     'function name() view returns (string)',
     'function approve(address spender, uint256 amount) returns (bool)',
-    'function allowance(address owner, address spender) view returns (uint256)'
+    'function allowance(address owner, address spender) view returns (uint256)',
+    'function transfer(address to, uint256 amount) returns (bool)'
   ];
 
   const EXPLORER_API = 'https://worldchain-mainnet.explorer.alchemy.com/api';
@@ -1164,15 +1165,16 @@
       // 3) swap directo contra el router real
       let swapData;
       if(quoteState.route === 'v3'){
+        // este router de World Chain usa la variante SIN deadline en el struct
+        // (selector 0x04e45aaf), confirmado por swaps reales ya hechos en otros proyectos
         const v3Iface = new ethers.Interface([
-          'function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) payable returns (uint256)'
+          'function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) payable returns (uint256)'
         ]);
         swapData = v3Iface.encodeFunctionData('exactInputSingle', [[
           fromToken.address.toLowerCase(),
           toToken.address.toLowerCase(),
           quoteState.poolFee,
           userAddress,
-          deadline,
           netAmount,
           amountOutMin,
           0
@@ -1477,11 +1479,11 @@
       try{
         if(route.type === 'v3'){
           const v3RouterAbi = [
-            'function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) payable returns (uint256)'
+            'function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) payable returns (uint256)'
           ];
           const v3RouterContract = new ethers.Contract(V3_ROUTER_REAL, v3RouterAbi, p);
           await v3RouterContract.exactInputSingle.staticCall(
-            [WLD_ADDRESS.toLowerCase(), targetToken.address.toLowerCase(), route.poolFee, userAddress, deadline, testAmount, 0, 0],
+            [WLD_ADDRESS.toLowerCase(), targetToken.address.toLowerCase(), route.poolFee, userAddress, testAmount, 0, 0],
             { from: userAddress }
           );
         }else{
