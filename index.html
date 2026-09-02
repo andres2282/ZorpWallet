@@ -413,7 +413,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b3-liqfilter-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b4-curated-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -437,6 +437,67 @@
     { symbol:'WLD',  name:'Worldcoin', address: WLD_ADDRESS, decimals:18, icon:ICON_WLD },
     { symbol:'ZORP', name:'Zorp Token', address: ZORP_TOKEN, decimals:18, icon:ICON_ZORP }
   ];
+
+  // Lista curada: tokens que el usuario confirmó como confiables/operativos.
+  // Se leen siempre por RPC directo (símbolo, nombre, decimales, saldo) sin depender
+  // de explorador ni de heurísticas de liquidez — si tenés saldo, aparece.
+  const CURATED_TOKEN_ADDRESSES = [
+    '0xAC794B2a7F81e5778f3733AF00901d4c6Ee2A740',
+    '0xab09A728E53d3d6BC438BE95eeD46Da0Bbe7FB38',
+    '0x5FD95419576265f51832cD0C052973F2BbBAbA44',
+    '0xD021eE02CD3854A5D1e82cBeBdF277ce0DC96dA4',
+    '0x40412216dc57eb810DC6089CB272AE56AAb3cB69',
+    '0x1b2e56Ff81a4eBdAB731e029ab71E950db76B376',
+    '0x115494B0B00Da359f18eFa10877406Ad0559B9b1',
+    '0xcd1E32B86953D79a6AC58e813D2EA7a1790cAb63',
+    '0x4200000000000000000000000000000000000006',
+    '0x03C7054BCB39f7b2e5B2c7AcB37583e32D70Cfa3',
+    '0x1C60ba0A0eD1019e8Eb035E6daF4155A5cE2380B',
+    '0xED49fE44fD4249A09843C2Ba4bba7e50BECa7113',
+    '0x0458965C6A85b14E022C1920276197c972f0Fd2f',
+    '0xF3F92A60e6004f3982F0FdE0d43602fC0a30a0dB',
+    '0x306cb44390B77410fcC414d9457E946cc0c053D0',
+    '0x1213BD912f3110b23Be9Dbbb3f2588Ae4265E91b',
+    '0x0693a870CC73C8bAdEddE386baB846c6e7FC1aD6',
+    '0x249820C0479D0A7feE6A2A3a14583267550F3caF',
+    '0xAA8F08307B6604ab43075d2d34AbD0F1E616C17c',
+    '0xdCE6A2D414021d27a52c80aEe486f2603dCD7DF1',
+    '0x9e508CA3fdd4b915ce89624763a87c9314fD7536',
+    '0x37CEF2Ea9dD8B364e8E60405D55887a1d5AE76D4',
+    '0x8d522D1fc97574f0D472B289B906E7cC1D0DA88c',
+    '0x7047b80cb47527e864029d3CFe1899534DC15402',
+    '0xB1BFa980fFFC15c2c5b9dcCFc214EF1E41B4122c',
+    '0x4e2ee077c89E61847aC5b5Ed07b1c38E0d1feB67',
+    '0x14607367b81f767160c9cAE2283932079C293C86',
+    '0x1191a54c53DBe8487c3A258C2A4a84aAe7E936F5',
+    '0x13e20981D9bd3dC45e99802f06488C5AD7c28360',
+    '0x26064DD7821f351202c61f0deB97678eef265E36',
+    '0x604CC420C95F2eE546A1765b0305F725fd6f75b4',
+    '0x24e2f756AF6558818083E78B1205D156542bCe80',
+    '0xcd7Abb83918984A0Bb10a02f8656923041777369',
+    '0xBD179ad384a11Ac2162c0E808212ee3699D18447',
+    '0x1aE3498f1B417fe31BE544B04B711F27Ba437bd3',
+    '0x949cfdF7AFa294d35CeBaaCB8D31D49724E24303',
+    '0x155f02Fa987b0E1DB16090Bf9aC02F0E71fa12c1',
+    '0x03995cE5Ad612a2cC3E4DFBEEb0EeD7BC165749b',
+    '0xFC27ee45781110b7704a5D3DDB1F8069EbfdF9da',
+    '0x1e85BDd120c0907372E1963D0f38F917c8520d4b',
+    '0xF402C515f7d3d78120d0CcFadD576589f7CFd297',
+    '0x6fb9DF9530E302BE9Dc126363Bd7529b807f7167',
+    '0xE977de70dd1F571Aa563E41525C28b4F1eDB69ba',
+    '0x513530649BAC862c38b65e957E6EA38d3f86F3dc',
+    '0x06B4C6830bb19BF07A88ff96758003074EaE9c52',
+    '0x34Df45B11461DeD4099219345158Ea9726613cAe',
+    '0xbF0B23Ec1b8F8505b4F1772517151B2df4A27703',
+    '0xdB00597630a54fEa24395EF2212159C997Bf3612',
+    '0x7bA12Bd134dc29fA2079E1c09105e3Fdcf2274D2',
+    '0xB7b9Bc8e8c301E761AF20143A3477e5D1890e1Dd',
+    '0x46419777e9526f10E26382AdC5497934b8432EAE',
+    '0x185D91D0288C1113613bbb7Cf69c0365531d2D3C',
+    '0xEdE54d9c024ee80C85ec0a75eD2d8774c7Fbac9B',
+    '0x43b522950212c261Af26c0a17cd69C0f6875D5E2',
+    '0xc018380F5964B05450dAc3958b962EA8920F0e9E'
+  ].map(a => a.toLowerCase());
 
   let provider = null;
   let mk = null;
@@ -671,52 +732,35 @@
     try{
       const p = await getReadProvider();
       const listEl = document.getElementById('tokenList');
-      listEl.innerHTML = '<div class="empty-state">Buscando tus tokens…</div>';
+      listEl.innerHTML = `<div class="empty-state">Leyendo tus tokens (${CURATED_TOKEN_ADDRESSES.length + 2})…</div>`;
 
-      // 1) traer la lista de TODOS los tokens que tuvo movimiento en esta wallet
-      let discovered = [];
-      let explorerFailed = false;
-      for(let attempt = 0; attempt < 2 && discovered.length === 0; attempt++){
-        try{
-          const url = `${EXPLORER_API}?module=account&action=tokenlist&address=${userAddress}`;
-          const r = await fetch(url);
-          const data = await r.json();
-          if(data && Array.isArray(data.result) && data.result.length){
-            discovered = data.result.map(t => ({
-              symbol: t.symbol || '?',
-              name: t.name || t.symbol || 'Token',
-              address: (t.contractAddress || t.address || '').toLowerCase(),
-              decimals: parseInt(t.decimals || '18', 10)
-            })).filter(t => t.address);
-          }
-        }catch(e){
-          console.error('explorer tokenlist error (intento ' + attempt + ')', e);
-          explorerFailed = true;
-        }
-        if(discovered.length === 0 && attempt === 0){
-          await new Promise(r => setTimeout(r, 800)); // pequeña espera antes de reintentar
-        }
-      }
+      // lista fija: WLD, ZORP y los tokens curados que confirmaste como confiables.
+      // Se lee cada uno directo de la blockchain (símbolo, nombre, decimales, saldo) —
+      // si tenés saldo > 0, aparece. No depende del explorador ni de heurísticas de liquidez.
+      const candidateAddresses = [
+        WLD_ADDRESS.toLowerCase(),
+        ZORP_TOKEN.toLowerCase(),
+        ...CURATED_TOKEN_ADDRESSES.filter(a => a !== WLD_ADDRESS.toLowerCase() && a !== ZORP_TOKEN.toLowerCase())
+      ];
 
-      // 2) combinar con la lista base (WLD/ZORP siempre visibles aunque el explorador no los liste)
-      const byAddress = {};
-      [...KNOWN_TOKENS, ...discovered].forEach(t => { byAddress[t.address.toLowerCase()] = t; });
-      const allTokens = Object.values(byAddress);
-
-      listEl.innerHTML = `<div class="empty-state">Leyendo saldos (${allTokens.length} tokens)…</div>`;
-
-      // --- FASE 1: leer balances en paralelo (con límite de concurrencia) para no trabar el navegador ---
-      async function readBalancesInBatches(tokens, batchSize){
+      async function readTokenInBatches(addresses, batchSize){
         const results = [];
-        for(let i = 0; i < tokens.length; i += batchSize){
-          const batch = tokens.slice(i, i + batchSize);
-          const batchResults = await Promise.all(batch.map(async (tk) => {
+        for(let i = 0; i < addresses.length; i += batchSize){
+          const batch = addresses.slice(i, i + batchSize);
+          const batchResults = await Promise.all(batch.map(async (addr) => {
             try{
-              const c = new ethers.Contract(tk.address.toLowerCase(), ERC20_ABI, p);
-              const bal = await c.balanceOf(userAddress);
-              return { tk, bal };
+              const c = new ethers.Contract(addr, ERC20_ABI, p);
+              const isCore = addr === WLD_ADDRESS.toLowerCase() || addr === ZORP_TOKEN.toLowerCase();
+              const known = KNOWN_TOKENS.find(t => t.address.toLowerCase() === addr);
+              const [bal, symbol, name, decimals] = await Promise.all([
+                c.balanceOf(userAddress),
+                known ? Promise.resolve(known.symbol) : c.symbol().catch(() => '?'),
+                known ? Promise.resolve(known.name) : c.name().catch(() => 'Token'),
+                known ? Promise.resolve(known.decimals) : c.decimals().catch(() => 18)
+              ]);
+              return { address: addr, bal, symbol, name, decimals, isCore, icon: known ? known.icon : null };
             }catch(e){
-              return { tk, bal: null };
+              return { address: addr, bal: null };
             }
           }));
           results.push(...batchResults);
@@ -724,112 +768,81 @@
         return results;
       }
 
-      const balanceResults = await readBalancesInBatches(allTokens, 12);
-      const withBalance = balanceResults.filter(r => r.bal !== null && r.bal > 0n);
+      const results = await readTokenInBatches(candidateAddresses, 10);
+      const withBalance = results.filter(r => r.bal !== null && r.bal > 0n);
 
       listEl.innerHTML = `<div class="empty-state">Buscando precios (${withBalance.length} tokens con saldo)…</div>`;
 
-      // --- FASE 2: solo para los que tienen saldo, buscar precio en paralelo ---
-      async function fetchPriceInBatches(items, batchSize){
-        const results = [];
+      // precio en USD vía DexScreener, solo informativo — no decide si se muestra o no
+      async function fetchPricesInBatches(items, batchSize){
+        const out = [];
         for(let i = 0; i < items.length; i += batchSize){
           const batch = items.slice(i, i + batchSize);
-          const batchResults = await Promise.all(batch.map(async ({tk, bal}) => {
-            const formatted = ethers.formatUnits(bal, tk.decimals);
+          const batchResults = await Promise.all(batch.map(async (r) => {
             let usdValue = null;
-            let hasLiquidity = false;
             try{
-              const dr = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tk.address}`);
+              const dr = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${r.address}`);
               const dd = await dr.json();
               const pair = (dd.pairs || []).filter(pp => pp.chainId === 'worldchain')
                 .sort((a,b) => (b.liquidity?.usd||0) - (a.liquidity?.usd||0))[0];
-              if(pair && pair.priceUsd && (pair.liquidity?.usd || 0) > 1000){
-                // señal extra de pool "vivo": movimiento reciente (24h) real, no solo liquidez estática vieja
-                const vol24h = pair.volume?.h24 || 0;
-                if(vol24h > 10){
-                  usdValue = parseFloat(formatted) * parseFloat(pair.priceUsd);
-                  hasLiquidity = true;
-                }
+              if(pair && pair.priceUsd){
+                const formatted = ethers.formatUnits(r.bal, r.decimals);
+                usdValue = parseFloat(formatted) * parseFloat(pair.priceUsd);
               }
             }catch(e){ /* sin precio disponible */ }
-            return { tk, formatted, usdValue, hasLiquidity };
+            return { ...r, usdValue };
           }));
-          results.push(...batchResults);
+          out.push(...batchResults);
         }
-        return results;
+        return out;
       }
 
-      const priced = await fetchPriceInBatches(withBalance, 8);
+      const priced = await fetchPricesInBatches(withBalance, 8);
 
       listEl.innerHTML = '';
       let totalUsd = 0;
       let anyShown = false;
       const shownTokens = [];
-      const rejected = [];
 
-      for(const { tk, formatted, usdValue, hasLiquidity } of priced){
-        // filtro: solo tokens con pool real y valor >= $0.01 en la wallet (para no listar polvo/spam).
-        // WLD y ZORP son excepción: siempre se muestran.
-        const isCore = tk.address.toLowerCase() === WLD_ADDRESS.toLowerCase()
-          || tk.address.toLowerCase() === ZORP_TOKEN.toLowerCase();
-        if(!isCore && (!hasLiquidity || usdValue === null || usdValue < 0.01)){
-          rejected.push(`${tk.symbol}(bal:${trimNum(formatted)},${hasLiquidity ? 'usd:$'+(usdValue?usdValue.toFixed(4):'?') : 'sin liq/vol'})`);
-          continue;
-        }
+      for(const r of priced){
+        const formatted = ethers.formatUnits(r.bal, r.decimals);
+        if(r.usdValue !== null) totalUsd += r.usdValue;
 
-        if(usdValue !== null) totalUsd += usdValue;
-
-        const geckoUrl = await getGeckoIcon(tk.address);
-        const iconHtml = geckoUrl
-          ? `<img src="${geckoUrl}" alt="${tk.symbol}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.parentElement.innerHTML='${(tk.symbol||'?')[0]}'">`
-          : tkIconHtml(tk);
+        const geckoUrl = r.icon && r.icon.startsWith('data:') ? null : await getGeckoIcon(r.address);
+        const tk = { symbol: r.symbol, name: r.name, address: r.address, decimals: r.decimals, icon: r.icon };
+        const iconHtml = r.icon
+          ? tkIconHtml(tk)
+          : (geckoUrl
+            ? `<img src="${geckoUrl}" alt="${r.symbol}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.parentElement.innerHTML='${(r.symbol||'?')[0]}'">`
+            : (r.symbol ? r.symbol[0] : '?'));
 
         const row = document.createElement('div');
         row.className = 'token-row';
         row.innerHTML = `
           <div class="tk-icon">${iconHtml}</div>
           <div class="tk-info">
-            <div class="tk-name">${tk.name}</div>
-            <div class="tk-sub">${tk.symbol}</div>
+            <div class="tk-name">${r.name}</div>
+            <div class="tk-sub">${r.symbol}</div>
           </div>
           <div class="tk-amt">
             <div class="tk-bal">${trimNum(formatted)}</div>
-            ${usdValue !== null ? `<div class="tk-usd">$${usdValue.toLocaleString('es',{maximumFractionDigits:2})}</div>` : ''}
+            ${r.usdValue !== null ? `<div class="tk-usd">$${r.usdValue.toLocaleString('es',{maximumFractionDigits:2})}</div>` : ''}
           </div>`;
         listEl.appendChild(row);
         anyShown = true;
 
-        // guardar para el selector de Swap/Enviar, con el ícono (URL de gecko si existe) resuelto
-        shownTokens.push({ ...tk, icon: geckoUrl || tk.icon, balance: formatted });
+        shownTokens.push({ ...tk, icon: r.icon || geckoUrl || tk.icon, balance: formatted });
       }
 
       walletTokens = shownTokens.length ? shownTokens : walletTokens;
 
-      console.log('DEBUG totalUsd final:', totalUsd, 'shownTokens:', shownTokens.length);
       const totalText = '$' + totalUsd.toLocaleString('es', {maximumFractionDigits:2});
-      console.log('DEBUG totalText:', totalText);
       const totalEl = document.getElementById('totalUsd');
-      if(totalEl){
-        totalEl.textContent = totalText;
-      }else{
-        console.error('DEBUG: no se encontró el elemento #totalUsd en el DOM');
-      }
-      const diagEl = document.getElementById('totalDiag');
-      if(diagEl) diagEl.textContent = `(diag total: ${totalUsd} → "${totalText}")`;
+      if(totalEl) totalEl.textContent = totalText;
 
       if(!anyShown){
-        listEl.innerHTML = '<div class="empty-state">No se encontraron tokens con saldo</div>';
+        listEl.innerHTML = '<div class="empty-state">No se encontraron tokens con saldo en tu lista</div>';
       }
-
-      // diagnóstico temporal: cuántos tokens trajo el explorador vs cuántos pasaron el filtro
-      const diag = document.createElement('div');
-      diag.style.cssText = 'font-size:10px;color:var(--text-faint);text-align:left;padding-top:8px;word-break:break-all;';
-      let diagText = `(diag: explorador encontró ${discovered.length} token(s)${explorerFailed ? ', falló al menos 1 intento' : ''}, ${withBalance.length} con saldo>0, ${shownTokens.length} pasaron el filtro)`;
-      if(rejected.length){
-        diagText += `\nDescartados con saldo (motivo): ${rejected.slice(0,20).join(' · ')}${rejected.length>20?'...':''}`;
-      }
-      diag.textContent = diagText;
-      listEl.appendChild(diag);
     }catch(e){
       console.error('loadBalances error', e);
       document.getElementById('tokenList').innerHTML =
