@@ -94,7 +94,9 @@
     max-width:480px; margin:0 auto;
     background:rgba(11,15,18,.97); backdrop-filter:blur(12px);
     border-top:1px solid var(--border);
-    display:flex; padding:10px 4px calc(10px + env(safe-area-inset-bottom));
+    display:flex; align-items:center;
+    padding:8px 4px calc(8px + env(safe-area-inset-bottom));
+    min-height:80px;
   }
   nav.tabbar button{
     flex:1; background:none; border:none; color:var(--text-faint);
@@ -102,11 +104,11 @@
     padding:6px 2px; font-size:10.5px; font-weight:600;
   }
   .tab-btn-plain{
-    flex:1; background:none; border:none; padding:2px; display:flex;
-    align-items:center; justify-content:center; opacity:.55;
+    flex:1; background:none; border:none; padding:0; display:flex;
+    align-items:center; justify-content:center; opacity:.55; min-height:64px;
   }
   .tab-btn-plain.active{opacity:1;}
-  .tab-btn-plain img{width:66px; height:auto; display:block;}
+  .tab-btn-plain img{width:58px; height:auto; display:block; max-height:64px; object-fit:contain;}
 
   /* ---------- componentes comunes ---------- */
   .card{
