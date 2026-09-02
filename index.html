@@ -434,12 +434,13 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b12-liqcheck-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b13-directrouter-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
   const ZORP_TOKEN     = '0xaB841a1E0cC65A3cC41b842C85E0cE51C87fb28E';
-  const ZORP_ROUTER    = '0x542d67846072003Ee41539600F6310Db6399Dd3c';
+  const ZORP_ROUTER    = '0x542d67846072003Ee41539600F6310Db6399Dd3c'; // ya no se usa para el swap, queda documentado
+  const ZORP_TREASURY  = '0x3D3C7AB150B0414a8c9a1d2A802193349346A186'; // recibe la comisión directo (patrón LOOT)
   const V3_ROUTER_REAL = '0x1072a0a713a23a2da9bab99e9cd68187970e89a4';
   const V2_ROUTER_REAL = '0x541ab7c31a119441ef3575f6973277de0ef460bd';
   const WLD_ADDRESS    = '0x2cFc85d8E48F8EAB294be644d9E25C3030863003';
@@ -1136,43 +1137,62 @@
       const cleanAmountStr = truncateDecimals(amountStr.replace(',', '.'), fromToken.decimals);
       const amountWei = ethers.parseUnits(cleanAmountStr, fromToken.decimals);
 
-      // slippage 5%: protege contra que el precio se mueva entre la cotización y la confirmación
+      // comisión calculada en el frontend: 0.50% normal, 0.30% con 100.000+ $ZORP
+      const p = await getReadProvider();
+      const zorpContract = new ethers.Contract(ZORP_TOKEN, ERC20_ABI, p);
+      let zorpBal = 0n;
+      try{ zorpBal = await zorpContract.balanceOf(userAddress); }catch(e){ /* si falla, se cobra la tarifa normal */ }
+      const holderMin = ethers.parseUnits('100000', 18);
+      const feeBps = zorpBal >= holderMin ? 30n : 50n;
+      const feeAmount = (amountWei * feeBps) / 10000n;
+      const netAmount = amountWei - feeAmount;
+
+      // slippage 5% sobre la cotización, calculada sobre el monto NETO (después de comisión)
       const minOut = quoteState.outAmount * 0.95;
       const amountOutMin = ethers.parseUnits(minOut.toFixed(Number(toToken.decimals) > 18 ? 18 : Number(toToken.decimals)), toToken.decimals);
 
       const deadline = Math.floor(Date.now()/1000) + 1200;
 
-      const approveIface = new ethers.Interface(ERC20_ABI);
-      const approveData = approveIface.encodeFunctionData('approve', [ZORP_ROUTER, amountWei]);
+      // 1) comisión: transfer directo a la tesorería
+      const erc20Iface = new ethers.Interface(ERC20_ABI);
+      const transferData = erc20Iface.encodeFunctionData('transfer', [ZORP_TREASURY, feeAmount]);
 
+      // 2) approve del monto NETO directo al router real de Uniswap (no a un contrato propio)
+      const routerAddr = quoteState.route === 'v3' ? V3_ROUTER_REAL : V2_ROUTER_REAL;
+      const approveData = erc20Iface.encodeFunctionData('approve', [routerAddr, netAmount]);
+
+      // 3) swap directo contra el router real
       let swapData;
       if(quoteState.route === 'v3'){
-        const routerIface = new ethers.Interface([
-          'function swapV3Single(address tokenIn, address tokenOut, uint24 poolFee, uint256 amountIn, uint256 amountOutMinimum, uint256 deadline)'
+        const v3Iface = new ethers.Interface([
+          'function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) payable returns (uint256)'
         ]);
-        swapData = routerIface.encodeFunctionData('swapV3Single', [
+        swapData = v3Iface.encodeFunctionData('exactInputSingle', [[
           fromToken.address.toLowerCase(),
           toToken.address.toLowerCase(),
           quoteState.poolFee,
-          amountWei,
+          userAddress,
+          deadline,
+          netAmount,
           amountOutMin,
-          deadline
-        ]);
+          0
+        ]]);
       }else{
         const path = [fromToken.address.toLowerCase(), toToken.address.toLowerCase()];
-        const routerIface = new ethers.Interface([
-          'function swapV2(address[] path, uint256 amountIn, uint256 amountOutMin, uint256 deadline, bool supportsFeeOnTransfer)'
+        const v2Iface = new ethers.Interface([
+          'function swapExactTokensForTokensSupportingFeeOnTransferTokens(uint256 amountIn, uint256 amountOutMin, address[] path, address to, uint256 deadline)'
         ]);
-        swapData = routerIface.encodeFunctionData('swapV2', [
-          path, amountWei, amountOutMin, deadline, false
+        swapData = v2Iface.encodeFunctionData('swapExactTokensForTokensSupportingFeeOnTransferTokens', [
+          netAmount, amountOutMin, path, userAddress, deadline
         ]);
       }
 
       const res = await k.sendTransaction({
         chainId: CHAIN_ID,
         transactions: [
+          { to: fromToken.address.toLowerCase(), data: transferData },
           { to: fromToken.address.toLowerCase(), data: approveData },
-          { to: ZORP_ROUTER, data: swapData }
+          { to: routerAddr, data: swapData }
         ]
       });
 
@@ -1417,9 +1437,9 @@
       const testAmount = wldBal / 10n > ethers.parseUnits('0.001', 18) ? ethers.parseUnits('0.001', 18) : wldBal / 10n;
       log(`Monto de prueba: ${ethers.formatUnits(testAmount, 18)} WLD`);
 
-      // 2) allowance actual hacia ZorpRouter
-      const allowance = await wldContract.allowance(userAddress, ZORP_ROUTER);
-      log(`Allowance actual hacia ZorpRouter: ${ethers.formatUnits(allowance, 18)}`);
+      // 2) allowance actual hacia el router real de Uniswap (V3)
+      const v3RouterAllowance = await wldContract.allowance(userAddress, V3_ROUTER_REAL);
+      log(`Allowance actual hacia el router V3 real: ${ethers.formatUnits(v3RouterAllowance, 18)}`);
 
       // 3) detectar ruta (V3 o V2)
       log('Buscando ruta...');
@@ -1445,43 +1465,38 @@
           if(liq === 0n){
             log('❌ El pool EXISTE pero tiene liquidez CERO — por eso revierte el swap');
           }
-          try{
-            const slot0 = await poolContract.slot0();
-            log(`slot0 (precio actual): sqrtPriceX96=${slot0[0].toString()}`);
-          }catch(e){
-            log(`⚠️ No se pudo leer slot0: ${e.message}`);
-          }
         }catch(e){
           log(`⚠️ No se pudo verificar liquidez del pool: ${e.message}`);
         }
       }
 
-      // 4) SIMULACIÓN real del contrato con staticCall — no firma, no gasta gas, muestra el revert real
+      // 4) SIMULACIÓN real contra el router de Uniswap DIRECTO (nuevo patrón, igual que LOOT) —
+      //    no firma, no gasta gas, muestra el revert real
       const deadline = Math.floor(Date.now()/1000) + 1200;
-      const zorpRouterAbi = [
-        'function swapV3Single(address tokenIn, address tokenOut, uint24 poolFee, uint256 amountIn, uint256 amountOutMinimum, uint256 deadline) returns (uint256)',
-        'function swapV2(address[] path, uint256 amountIn, uint256 amountOutMin, uint256 deadline, bool supportsFeeOnTransfer)'
-      ];
-      const routerContract = new ethers.Contract(ZORP_ROUTER, zorpRouterAbi, p);
-
-      // el staticCall se ejecuta CON el approve actual: si es insuficiente, va a fallar ahí
-      // (eso es correcto: es exactamente lo que pasaría en la vida real sin el approve previo)
-      log('Simulando la llamada al contrato (sin firmar, sin gastar gas)...');
+      log('Simulando la llamada al router real (sin firmar, sin gastar gas)...');
       try{
         if(route.type === 'v3'){
-          await routerContract.swapV3Single.staticCall(
-            WLD_ADDRESS.toLowerCase(), targetToken.address.toLowerCase(), route.poolFee,
-            testAmount, 0, deadline, { from: userAddress }
+          const v3RouterAbi = [
+            'function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) payable returns (uint256)'
+          ];
+          const v3RouterContract = new ethers.Contract(V3_ROUTER_REAL, v3RouterAbi, p);
+          await v3RouterContract.exactInputSingle.staticCall(
+            [WLD_ADDRESS.toLowerCase(), targetToken.address.toLowerCase(), route.poolFee, userAddress, deadline, testAmount, 0, 0],
+            { from: userAddress }
           );
         }else{
-          await routerContract.swapV2.staticCall(
-            [WLD_ADDRESS.toLowerCase(), targetToken.address.toLowerCase()],
-            testAmount, 0, deadline, false, { from: userAddress }
+          const v2RouterAbi = [
+            'function swapExactTokensForTokensSupportingFeeOnTransferTokens(uint256 amountIn, uint256 amountOutMin, address[] path, address to, uint256 deadline)'
+          ];
+          const v2RouterContract = new ethers.Contract(V2_ROUTER_REAL, v2RouterAbi, p);
+          await v2RouterContract.swapExactTokensForTokensSupportingFeeOnTransferTokens.staticCall(
+            testAmount, 0, [WLD_ADDRESS.toLowerCase(), targetToken.address.toLowerCase()], userAddress, deadline,
+            { from: userAddress }
           );
         }
         log('✅ La simulación pasó sin errores (el swap debería funcionar)');
       }catch(simErr){
-        log(`❌ La simulación falló con el error real del contrato:`);
+        log(`❌ La simulación falló con el error real del router:`);
         log(`   ${simErr.reason || simErr.shortMessage || simErr.message || JSON.stringify(simErr).slice(0,200)}`);
       }
 
