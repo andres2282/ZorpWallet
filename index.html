@@ -343,6 +343,14 @@
       </div>
 
       <div class="card">
+        <div class="card-title">🔄 Diagnóstico de Swap</div>
+        <div class="field-label">Token de salida a probar</div>
+        <div class="tk-select" id="diagSwapTokenBtn" style="margin-bottom:10px; width:fit-content;">ZORP ▾</div>
+        <button class="btn secondary" id="btnDiagSwap" style="margin-bottom:10px;">Simular swap WLD → (elegido)</button>
+        <div id="diagSwapOutput" style="font-size:11px; line-height:1.6; color:var(--text-dim); white-space:pre-wrap; word-break:break-all;"></div>
+      </div>
+
+      <div class="card">
         <div class="card-title">Invitá y ganá</div>
         <div class="empty-state">Próximamente</div>
       </div>
@@ -426,7 +434,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b7-realquote-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b10-diagswap-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -435,6 +443,7 @@
   const V3_ROUTER_REAL = '0x1072a0a713a23a2da9bab99e9cd68187970e89a4';
   const V2_ROUTER_REAL = '0x541ab7c31a119441ef3575f6973277de0ef460bd';
   const WLD_ADDRESS    = '0x2cFc85d8E48F8EAB294be644d9E25C3030863003';
+  const UNISWAP_V3_FACTORY = '0x7a5028BDa40e7B173C278C5342087826455ea25a';
 
   const RPC_ENDPOINTS = [
     'https://worldchain-mainnet.g.alchemy.com/public',
@@ -531,7 +540,7 @@
     t.className = 'toast' + (isError ? ' error' : '');
     t.style.display = 'block';
     clearTimeout(window._toastTimer);
-    window._toastTimer = setTimeout(()=>{ t.style.display='none'; }, 3500);
+    window._toastTimer = setTimeout(()=>{ t.style.display='none'; }, isError ? 12000 : 3500);
   }
 
   function shortAddr(a){
@@ -542,6 +551,13 @@
   function num(v){
     if(typeof v !== 'string') return parseFloat(v) || 0;
     return parseFloat(v.replace(',', '.')) || 0;
+  }
+
+  // corta un string decimal a máximo N decimales sin redondear (evita "too many decimals" en parseUnits)
+  function truncateDecimals(str, maxDecimals){
+    const parts = str.split('.');
+    if(parts.length < 2) return str;
+    return parts[0] + '.' + parts[1].slice(0, maxDecimals);
   }
 
   function goTab(name){
@@ -995,8 +1011,29 @@
   }
 
   // ---- cotización real vía DexScreener: precio en USD de cada token, estimación por regla de tres ----
-  const quoteState = { loading:false, noRoute:false, outAmount:null };
+  const quoteState = { loading:false, noRoute:false, outAmount:null, route:null, poolFee:null };
   let quoteDebounceTimer = null;
+
+  // ---- detección de ruta real: prueba fee tiers de V3 primero, cae a V2 si no hay pool ----
+  const V3_FACTORY_ABI = ['function getPool(address,address,uint24) view returns (address)'];
+  const FEE_TIERS = [500, 3000, 10000, 100];
+
+  async function findRoute(tokenA, tokenB){
+    try{
+      const p = await getReadProvider();
+      const factory = new ethers.Contract(UNISWAP_V3_FACTORY, V3_FACTORY_ABI, p);
+      for(const fee of FEE_TIERS){
+        try{
+          const pool = await factory.getPool(tokenA, tokenB, fee);
+          if(pool && pool !== ethers.ZeroAddress){
+            return { type: 'v3', poolFee: fee };
+          }
+        }catch(e){ /* seguir probando */ }
+      }
+    }catch(e){ /* sin RPC, seguir a V2 */ }
+    // si no hay pool V3 en ningún fee tier, asumimos V2 (Puf) como respaldo
+    return { type: 'v2', poolFee: null };
+  }
 
   async function getUsdPrice(address){
     try{
@@ -1017,6 +1054,7 @@
     if(!toToken || !amt){
       quoteState.noRoute = false;
       quoteState.outAmount = null;
+      quoteState.route = null;
       toAmountEl.value = '';
       updateSwapButton();
       return;
@@ -1026,12 +1064,15 @@
     quoteState.noRoute = false;
     updateSwapButton();
 
-    const [priceFrom, priceTo] = await Promise.all([
+    const [priceFrom, priceTo, route] = await Promise.all([
       getUsdPrice(fromToken.address),
-      getUsdPrice(toToken.address)
+      getUsdPrice(toToken.address),
+      findRoute(fromToken.address.toLowerCase(), toToken.address.toLowerCase())
     ]);
 
     quoteState.loading = false;
+    quoteState.route = route.type;
+    quoteState.poolFee = route.poolFee;
 
     if(!priceFrom || !priceTo){
       quoteState.noRoute = true;
@@ -1065,8 +1106,12 @@
         return;
       }
       const amount = pct === 100 ? bal : bal * (pct / 100);
-      document.getElementById('fromAmount').value = amount.toString();
+      // truncar a máximo 8 decimales: evita "too many decimals" en parseUnits
+      // y deja margen para tokens con menos de 18 decimales
+      document.getElementById('fromAmount').value = amount.toFixed(8).replace(/0+$/,'').replace(/\.$/,'');
       updateSwapButton();
+      clearTimeout(quoteDebounceTimer);
+      quoteDebounceTimer = setTimeout(refreshQuote, 600);
     });
   });
 
@@ -1088,27 +1133,40 @@
 
     try{
       showToast('Preparando swap…');
-      const amountWei = ethers.parseUnits(amountStr.replace(',', '.'), fromToken.decimals);
+      const cleanAmountStr = truncateDecimals(amountStr.replace(',', '.'), fromToken.decimals);
+      const amountWei = ethers.parseUnits(cleanAmountStr, fromToken.decimals);
 
       // slippage 5%: protege contra que el precio se mueva entre la cotización y la confirmación
       const minOut = quoteState.outAmount * 0.95;
       const amountOutMin = ethers.parseUnits(minOut.toFixed(toToken.decimals > 18 ? 18 : toToken.decimals), toToken.decimals);
 
-      // NOTA: la cotización real (Quoter V3 + reservas V2) se agrega en la
-      // siguiente iteración; por ahora arma la transacción para el camino V2
-      // (WLD <-> tokens listados en Puf), que es el flujo ya verificado.
       const deadline = Math.floor(Date.now()/1000) + 1200;
-      const path = [fromToken.address.toLowerCase(), toToken.address.toLowerCase()];
 
       const approveIface = new ethers.Interface(ERC20_ABI);
       const approveData = approveIface.encodeFunctionData('approve', [ZORP_ROUTER, amountWei]);
 
-      const routerIface = new ethers.Interface([
-        'function swapV2(address[] path, uint256 amountIn, uint256 amountOutMin, uint256 deadline, bool supportsFeeOnTransfer)'
-      ]);
-      const swapData = routerIface.encodeFunctionData('swapV2', [
-        path, amountWei, amountOutMin, deadline, false
-      ]);
+      let swapData;
+      if(quoteState.route === 'v3'){
+        const routerIface = new ethers.Interface([
+          'function swapV3Single(address tokenIn, address tokenOut, uint24 poolFee, uint256 amountIn, uint256 amountOutMinimum, uint256 deadline)'
+        ]);
+        swapData = routerIface.encodeFunctionData('swapV3Single', [
+          fromToken.address.toLowerCase(),
+          toToken.address.toLowerCase(),
+          quoteState.poolFee,
+          amountWei,
+          amountOutMin,
+          deadline
+        ]);
+      }else{
+        const path = [fromToken.address.toLowerCase(), toToken.address.toLowerCase()];
+        const routerIface = new ethers.Interface([
+          'function swapV2(address[] path, uint256 amountIn, uint256 amountOutMin, uint256 deadline, bool supportsFeeOnTransfer)'
+        ]);
+        swapData = routerIface.encodeFunctionData('swapV2', [
+          path, amountWei, amountOutMin, deadline, false
+        ]);
+      }
 
       const res = await k.sendTransaction({
         chainId: CHAIN_ID,
@@ -1121,17 +1179,23 @@
       const ok = (res && res.data && res.data.status === 'success')
         || (res && res.finalPayload && res.finalPayload.status !== 'error');
 
+      console.log('DEBUG swap res:', JSON.stringify(res));
+
       if(ok){
         showToast('Swap enviado ✅');
         document.getElementById('fromAmount').value = '';
         document.getElementById('toAmount').value = '';
         setTimeout(loadBalances, 4000);
       }else{
-        showToast('El swap no se completó', true);
+        const errDetail = (res && res.finalPayload && (res.finalPayload.error_code || res.finalPayload.description))
+          || (res && res.data && res.data.error_code)
+          || 'motivo desconocido';
+        showToast('Swap falló: ' + errDetail, true);
       }
     }catch(e){
       console.error(e);
-      showToast('Error al hacer el swap', true);
+      const msg = (e && e.message) ? e.message.slice(0, 150) : 'error desconocido';
+      showToast('Error: ' + msg, true);
     }
   };
 
@@ -1296,6 +1360,109 @@
     // 7) versión del archivo (para confirmar que Vercel sirve el archivo correcto)
     log(`\n📦 Build: ${BUILD_ID}`);
     log('\nDiagnóstico completo.');
+  };
+
+  // ============================================================
+  //  DIAGNÓSTICO DE SWAP — simula la transacción completa sin firmarla,
+  //  para ver el revert real del contrato si lo hay
+  // ============================================================
+  let diagSwapToken = null;
+  document.getElementById('diagSwapTokenBtn').onclick = () => {
+    pickerTarget = 'diagswap';
+    const listEl = document.getElementById('tokenPickerList');
+    listEl.innerHTML = '';
+    const tokensToShow = walletTokens.length ? walletTokens : KNOWN_TOKENS;
+    tokensToShow.forEach(tk=>{
+      const row = document.createElement('div');
+      row.className = 'token-row';
+      row.style.cursor = 'pointer';
+      row.innerHTML = `
+        <div class="tk-icon">${tkIconHtml(tk)}</div>
+        <div class="tk-info">
+          <div class="tk-name">${tk.name}</div>
+          <div class="tk-sub">${tk.symbol}</div>
+        </div>`;
+      row.onclick = ()=>{
+        diagSwapToken = tk;
+        document.getElementById('diagSwapTokenBtn').innerHTML = tkSelectHtml(tk);
+        closeModal('tokenPickerModal');
+      };
+      listEl.appendChild(row);
+    });
+    openModal('tokenPickerModal');
+  };
+
+  document.getElementById('btnDiagSwap').onclick = async () => {
+    const out = document.getElementById('diagSwapOutput');
+    const lines = [];
+    const log = (msg) => { lines.push(msg); out.textContent = lines.join('\n'); };
+
+    const targetToken = diagSwapToken || walletTokens.find(t => t.symbol === 'ZORP') || { symbol:'ZORP', address: ZORP_TOKEN, decimals: 18 };
+
+    log(`Probando swap: WLD → ${targetToken.symbol}`);
+    log(`Token de salida: ${targetToken.address}`);
+
+    if(!userAddress){ log('❌ No hay wallet conectada'); return; }
+
+    try{
+      const p = await getReadProvider();
+
+      // 1) balance real de WLD
+      const wldContract = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, p);
+      const wldBal = await wldContract.balanceOf(userAddress);
+      log(`✅ Balance WLD: ${ethers.formatUnits(wldBal, 18)}`);
+      if(wldBal === 0n){ log('❌ Sin saldo de WLD, no se puede probar'); return; }
+
+      // monto de prueba: el mínimo entre 0.001 WLD y el 10% del saldo
+      const testAmount = wldBal / 10n > ethers.parseUnits('0.001', 18) ? ethers.parseUnits('0.001', 18) : wldBal / 10n;
+      log(`Monto de prueba: ${ethers.formatUnits(testAmount, 18)} WLD`);
+
+      // 2) allowance actual hacia ZorpRouter
+      const allowance = await wldContract.allowance(userAddress, ZORP_ROUTER);
+      log(`Allowance actual hacia ZorpRouter: ${ethers.formatUnits(allowance, 18)}`);
+
+      // 3) detectar ruta (V3 o V2)
+      log('Buscando ruta...');
+      const route = await findRoute(WLD_ADDRESS.toLowerCase(), targetToken.address.toLowerCase());
+      log(`Ruta detectada: ${route.type.toUpperCase()}${route.poolFee ? ' (fee tier: ' + route.poolFee + ')' : ''}`);
+
+      if(route.type === 'none'){
+        log('❌ No se encontró ningún pool para este par (ni V3 ni V2)');
+        return;
+      }
+
+      // 4) SIMULACIÓN real del contrato con staticCall — no firma, no gasta gas, muestra el revert real
+      const deadline = Math.floor(Date.now()/1000) + 1200;
+      const zorpRouterAbi = [
+        'function swapV3Single(address tokenIn, address tokenOut, uint24 poolFee, uint256 amountIn, uint256 amountOutMinimum, uint256 deadline) returns (uint256)',
+        'function swapV2(address[] path, uint256 amountIn, uint256 amountOutMin, uint256 deadline, bool supportsFeeOnTransfer)'
+      ];
+      const routerContract = new ethers.Contract(ZORP_ROUTER, zorpRouterAbi, p);
+
+      // el staticCall se ejecuta CON el approve actual: si es insuficiente, va a fallar ahí
+      // (eso es correcto: es exactamente lo que pasaría en la vida real sin el approve previo)
+      log('Simulando la llamada al contrato (sin firmar, sin gastar gas)...');
+      try{
+        if(route.type === 'v3'){
+          await routerContract.swapV3Single.staticCall(
+            WLD_ADDRESS.toLowerCase(), targetToken.address.toLowerCase(), route.poolFee,
+            testAmount, 0, deadline, { from: userAddress }
+          );
+        }else{
+          await routerContract.swapV2.staticCall(
+            [WLD_ADDRESS.toLowerCase(), targetToken.address.toLowerCase()],
+            testAmount, 0, deadline, false, { from: userAddress }
+          );
+        }
+        log('✅ La simulación pasó sin errores (el swap debería funcionar)');
+      }catch(simErr){
+        log(`❌ La simulación falló con el error real del contrato:`);
+        log(`   ${simErr.reason || simErr.shortMessage || simErr.message || JSON.stringify(simErr).slice(0,200)}`);
+      }
+
+    }catch(e){
+      log(`❌ Error general: ${e.message}`);
+    }
   };
 
   document.getElementById('btnConnect').onclick = connectWallet;
