@@ -1017,24 +1017,49 @@
   const quoteState = { loading:false, noRoute:false, outAmount:null, route:null, poolFee:null };
   let quoteDebounceTimer = null;
 
-  // ---- detección de ruta real: prueba fee tiers de V3 primero, cae a V2 si no hay pool ----
+  // ---- detección de ruta real: revisa TODOS los fee tiers de V3 y se queda
+  // con el que tiene más liquidez real (balance del token en el pool) —
+  // antes se quedaba con el PRIMER pool que existía, aunque estuviera vacío,
+  // lo cual rompía el swap para tokens cuyo pool real está en un fee tier
+  // que no es el primero de la lista (ej: ORO está en 10000, no en 500) ----
   const V3_FACTORY_ABI = ['function getPool(address,address,uint24) view returns (address)'];
+  const ERC20_BALANCE_ABI = ['function balanceOf(address) view returns (uint256)'];
   const FEE_TIERS = [500, 3000, 10000, 100];
 
   async function findRoute(tokenA, tokenB){
     try{
       const p = await getReadProvider();
       const factory = new ethers.Contract(UNISWAP_V3_FACTORY, V3_FACTORY_ABI, p);
+      const tokenBContract = new ethers.Contract(tokenB, ERC20_BALANCE_ABI, p);
+
+      let mejorFee = null;
+      let mejorLiquidez = 0n;
+
       for(const fee of FEE_TIERS){
         try{
           const pool = await factory.getPool(tokenA, tokenB, fee);
           if(pool && pool !== ethers.ZeroAddress){
-            return { type: 'v3', poolFee: fee };
+            // el pool existe — medimos cuánto tokenB tiene adentro para
+            // saber si es un pool real con liquidez o uno vacío/fantasma
+            try{
+              const balance = await tokenBContract.balanceOf(pool);
+              if(balance > mejorLiquidez){
+                mejorLiquidez = balance;
+                mejorFee = fee;
+              }
+            }catch(e){
+              // si no podemos leer el balance pero es el único candidato hasta ahora, lo guardamos igual
+              if(mejorFee === null) mejorFee = fee;
+            }
           }
         }catch(e){ /* seguir probando */ }
       }
+
+      if(mejorFee !== null){
+        return { type: 'v3', poolFee: mejorFee };
+      }
     }catch(e){ /* sin RPC, seguir a V2 */ }
-    // si no hay pool V3 en ningún fee tier, asumimos V2 (Puf) como respaldo
+    // si no hay pool V3 con liquidez en ningún fee tier, asumimos V2 (Puf) como respaldo
     return { type: 'v2', poolFee: null };
   }
 
@@ -1516,9 +1541,10 @@
       const p = await getReadProvider();
       const wldContract = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, p);
       const wldBal = await wldContract.balanceOf(userAddress);
+      log(`Saldo WLD leído on-chain: ${ethers.formatUnits(wldBal, 18)} (raw: ${wldBal.toString()})`);
       const testAmount = wldBal / 10n > ethers.parseUnits('0.001', 18) ? ethers.parseUnits('0.001', 18) : wldBal / 10n;
       log(`Monto de prueba: ${ethers.formatUnits(testAmount, 18)} WLD`);
-      if(testAmount === 0n){ log('❌ Sin saldo de WLD suficiente'); return; }
+      if(testAmount === 0n){ log('❌ Saldo de WLD insuficiente para la prueba (necesitás al menos un poco más de WLD). Este NO es un bug del contrato — es que en este momento tenés muy poco WLD.'); return; }
 
       log('Paso 1/2: pidiendo la firma del APPROVE real (no gasta tu WLD, solo da permiso)...');
       const erc20Iface = new ethers.Interface(ERC20_ABI);
@@ -1536,21 +1562,28 @@
       log('✅ Approve real confirmado');
 
       // reintentos con provider fresco (no cacheado) por si el RPC en caché tiene lag
-      log('Esperando confirmación real del allowance (hasta 20s, con reintentos)...');
+      // Nota: el approve vía Account Abstraction (bundler/EntryPoint) puede tardar más
+      // en propagarse a RPCs públicos que una tx normal — por eso subimos a 10 intentos
+      // cada 5s (50s total) antes de asumir que el approve realmente no aplicó.
+      log('Esperando confirmación real del allowance (hasta 50s, con reintentos — el approve vía Account Abstraction puede tardar más en propagarse)...');
       let allowanceAhora = 0n;
-      for(let intento = 0; intento < 5; intento++){
-        await new Promise(r => setTimeout(r, 4000));
+      const totalIntentos = 10;
+      for(let intento = 0; intento < totalIntentos; intento++){
+        await new Promise(r => setTimeout(r, 5000));
         try{
           const freshProvider = new ethers.JsonRpcProvider(RPC_ENDPOINTS[intento % RPC_ENDPOINTS.length]);
           const freshWld = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, freshProvider);
           allowanceAhora = await freshWld.allowance(userAddress, ZORP_SWAP);
-          log(`  intento ${intento+1}: allowance = ${ethers.formatUnits(allowanceAhora, 18)} (RPC: ${RPC_ENDPOINTS[intento % RPC_ENDPOINTS.length]})`);
+          log(`  intento ${intento+1}/${totalIntentos}: allowance = ${ethers.formatUnits(allowanceAhora, 18)} (RPC: ${RPC_ENDPOINTS[intento % RPC_ENDPOINTS.length]})`);
           if(allowanceAhora > 0n) break;
         }catch(e){
-          log(`  intento ${intento+1}: error leyendo (${e.message.slice(0,60)})`);
+          log(`  intento ${intento+1}/${totalIntentos}: error leyendo (${e.message.slice(0,60)})`);
         }
       }
       log(`Allowance final: ${ethers.formatUnits(allowanceAhora, 18)}`);
+      if(allowanceAhora === 0n){
+        log('⚠️ El allowance sigue en 0 después de 50s. Si World App mostró el checkmark de confirmación, revisá el hash de ESTA transacción puntual en el explorador (Token transfers → Approval) para confirmar el spender y el value exactos — no asumas que es el mismo problema de siempre.');
+      }
 
       log('Paso 2/2: simulando swapV3/swapV2 con el allowance YA puesto de verdad...');
       const route = await findRoute(WLD_ADDRESS.toLowerCase(), targetToken.address.toLowerCase());
