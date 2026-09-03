@@ -434,7 +434,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b15-swapgeneric-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b16-slippage20-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -1138,9 +1138,9 @@
       const cleanAmountStr = truncateDecimals(amountStr.replace(',', '.'), fromToken.decimals);
       const amountWei = ethers.parseUnits(cleanAmountStr, fromToken.decimals);
 
-      // slippage 5% sobre la cotización estimada (el contrato cobra su propia
-      // comisión internamente, así que el mínimo se calcula sobre el bruto)
-      const minOut = quoteState.outAmount * 0.95;
+      // slippage 20% (temporal, para diagnosticar si el margen de 5% era muy ajustado
+      // frente al desfasaje de DexScreener respecto al precio real del pool)
+      const minOut = quoteState.outAmount * 0.80;
       const amountOutMin = ethers.parseUnits(minOut.toFixed(Number(toToken.decimals) > 18 ? 18 : Number(toToken.decimals)), toToken.decimals);
 
       // 1) approve del monto COMPLETO al contrato ZorpSwapGeneric (él descuenta su comisión adentro)
