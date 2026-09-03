@@ -435,7 +435,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b17-realapprove-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b18-freshread-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -1535,11 +1535,22 @@
       }
       log('✅ Approve real confirmado');
 
-      log('Esperando 5s a que el allowance se actualice en la red...');
-      await new Promise(r => setTimeout(r, 5000));
-
-      const allowanceAhora = await wldContract.allowance(userAddress, ZORP_SWAP);
-      log(`Allowance real después del approve: ${ethers.formatUnits(allowanceAhora, 18)}`);
+      // reintentos con provider fresco (no cacheado) por si el RPC en caché tiene lag
+      log('Esperando confirmación real del allowance (hasta 20s, con reintentos)...');
+      let allowanceAhora = 0n;
+      for(let intento = 0; intento < 5; intento++){
+        await new Promise(r => setTimeout(r, 4000));
+        try{
+          const freshProvider = new ethers.JsonRpcProvider(RPC_ENDPOINTS[intento % RPC_ENDPOINTS.length]);
+          const freshWld = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, freshProvider);
+          allowanceAhora = await freshWld.allowance(userAddress, ZORP_SWAP);
+          log(`  intento ${intento+1}: allowance = ${ethers.formatUnits(allowanceAhora, 18)} (RPC: ${RPC_ENDPOINTS[intento % RPC_ENDPOINTS.length]})`);
+          if(allowanceAhora > 0n) break;
+        }catch(e){
+          log(`  intento ${intento+1}: error leyendo (${e.message.slice(0,60)})`);
+        }
+      }
+      log(`Allowance final: ${ethers.formatUnits(allowanceAhora, 18)}`);
 
       log('Paso 2/2: simulando swapV3/swapV2 con el allowance YA puesto de verdad...');
       const route = await findRoute(WLD_ADDRESS.toLowerCase(), targetToken.address.toLowerCase());
