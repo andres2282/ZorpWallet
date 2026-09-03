@@ -1173,12 +1173,16 @@
       // 1) permiso de Permit2 del monto COMPLETO al contrato ZorpSwapGenericV2
       //    (él descuenta su comisión adentro). Se usa Permit2 en vez de approve()
       //    clásico porque World App bloquea el approve() suelto de ERC-20 desde
-      //    mini apps — la expiración va SIEMPRE en 0, se consume en este mismo lote.
+      //    mini apps. IMPORTANTE: expiration=0 en Permit2 NO significa "sin
+      //    vencimiento" — significa "vence exactamente en block.timestamp del
+      //    approve", así que cualquier llamada un instante después revienta con
+      //    AllowanceExpired. Le damos 1 hora de margen real.
       const permit2Iface = new ethers.Interface([
         'function approve(address token, address spender, uint160 amount, uint48 expiration)'
       ]);
+      const permit2Expiration = Math.floor(Date.now() / 1000) + 3600;
       const approveData = permit2Iface.encodeFunctionData('approve', [
-        fromToken.address.toLowerCase(), ZORP_SWAP, amountWei, 0
+        fromToken.address.toLowerCase(), ZORP_SWAP, amountWei, permit2Expiration
       ]);
 
       // 2) llamar swapV3() o swapV2() del contrato, según la ruta detectada
@@ -1554,12 +1558,13 @@
       log(`Monto de prueba: ${ethers.formatUnits(testAmount, 18)} WLD`);
       if(testAmount === 0n){ log('❌ Saldo de WLD insuficiente para la prueba (necesitás al menos un poco más de WLD). Este NO es un bug del contrato — es que en este momento tenés muy poco WLD.'); return; }
 
-      log('Paso 1/2: pidiendo la firma del permiso de Permit2 (no gasta tu WLD, solo da permiso — expiración 0, se consume en este mismo lote)...');
+      log('Paso 1/2: pidiendo la firma del permiso de Permit2 (no gasta tu WLD, solo da permiso — expira en 1 hora)...');
       const permit2Iface = new ethers.Interface([
         'function approve(address token, address spender, uint160 amount, uint48 expiration)',
         'function allowance(address owner, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)'
       ]);
-      const approveData = permit2Iface.encodeFunctionData('approve', [WLD_ADDRESS, ZORP_SWAP, testAmount, 0]);
+      const diagExpiration = Math.floor(Date.now() / 1000) + 3600;
+      const approveData = permit2Iface.encodeFunctionData('approve', [WLD_ADDRESS, ZORP_SWAP, testAmount, diagExpiration]);
       const resApprove = await k.sendTransaction({
         chainId: CHAIN_ID,
         transactions: [{ to: PERMIT2, data: approveData }]
