@@ -347,6 +347,7 @@
         <div class="field-label">Token de salida a probar</div>
         <div class="tk-select" id="diagSwapTokenBtn" style="margin-bottom:10px; width:fit-content;">ZORP ▾</div>
         <button class="btn secondary" id="btnDiagSwap" style="margin-bottom:10px;">Simular swap WLD → (elegido)</button>
+        <button class="btn secondary" id="btnDiagSwapReal" style="margin-bottom:10px; border-color:var(--red);">⚠️ Aprobar de verdad y simular el swap real</button>
         <div id="diagSwapOutput" style="font-size:11px; line-height:1.6; color:var(--text-dim); white-space:pre-wrap; word-break:break-all;"></div>
       </div>
 
@@ -434,7 +435,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b16-slippage20-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b17-realapprove-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -1491,6 +1492,83 @@
 
     }catch(e){
       log(`❌ Error general: ${e.message}`);
+    }
+  };
+
+  // ============================================================
+  //  DIAGNÓSTICO REAL — hace el approve de verdad (firmado, no cuesta
+  //  nada salvo gas) y DESPUÉS simula el swap con el allowance ya puesto.
+  //  Reproduce exactamente la secuencia real, para ver el revert verdadero.
+  // ============================================================
+  document.getElementById('btnDiagSwapReal').onclick = async () => {
+    const out = document.getElementById('diagSwapOutput');
+    const lines = [];
+    const log = (msg) => { lines.push(msg); out.textContent = lines.join('\n'); };
+
+    const targetToken = diagSwapToken || walletTokens.find(t => t.symbol === 'ZORP') || { symbol:'ZORP', address: ZORP_TOKEN, decimals: 18 };
+    log(`Probando swap REAL: WLD → ${targetToken.symbol}`);
+
+    if(!userAddress){ log('❌ No hay wallet conectada'); return; }
+    const k = getMiniKit();
+    if(!k){ log('❌ MiniKit no disponible'); return; }
+
+    try{
+      const p = await getReadProvider();
+      const wldContract = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, p);
+      const wldBal = await wldContract.balanceOf(userAddress);
+      const testAmount = wldBal / 10n > ethers.parseUnits('0.001', 18) ? ethers.parseUnits('0.001', 18) : wldBal / 10n;
+      log(`Monto de prueba: ${ethers.formatUnits(testAmount, 18)} WLD`);
+      if(testAmount === 0n){ log('❌ Sin saldo de WLD suficiente'); return; }
+
+      log('Paso 1/2: pidiendo la firma del APPROVE real (no gasta tu WLD, solo da permiso)...');
+      const erc20Iface = new ethers.Interface(ERC20_ABI);
+      const approveData = erc20Iface.encodeFunctionData('approve', [ZORP_SWAP, testAmount]);
+      const resApprove = await k.sendTransaction({
+        chainId: CHAIN_ID,
+        transactions: [{ to: WLD_ADDRESS, data: approveData }]
+      });
+      const approveOk = (resApprove && resApprove.data && resApprove.data.status === 'success')
+        || (resApprove && resApprove.finalPayload && resApprove.finalPayload.status !== 'error');
+      if(!approveOk){
+        log('❌ El approve real ya falló acá: ' + JSON.stringify(resApprove).slice(0,300));
+        return;
+      }
+      log('✅ Approve real confirmado');
+
+      log('Esperando 5s a que el allowance se actualice en la red...');
+      await new Promise(r => setTimeout(r, 5000));
+
+      const allowanceAhora = await wldContract.allowance(userAddress, ZORP_SWAP);
+      log(`Allowance real después del approve: ${ethers.formatUnits(allowanceAhora, 18)}`);
+
+      log('Paso 2/2: simulando swapV3/swapV2 con el allowance YA puesto de verdad...');
+      const route = await findRoute(WLD_ADDRESS.toLowerCase(), targetToken.address.toLowerCase());
+      const zorpSwapAbi = [
+        'function swapV3(address tokenIn, address tokenOut, uint24 poolFee, uint256 amountIn, uint256 minimoOut) returns (uint256)',
+        'function swapV2(address[] path, uint256 amountIn, uint256 minimoOut)'
+      ];
+      const zorpSwapContract = new ethers.Contract(ZORP_SWAP, zorpSwapAbi, p);
+      try{
+        if(route.type === 'v3'){
+          const result = await zorpSwapContract.swapV3.staticCall(
+            WLD_ADDRESS.toLowerCase(), targetToken.address.toLowerCase(), route.poolFee, testAmount, 0,
+            { from: userAddress }
+          );
+          log(`✅ Simulación del swap real pasó — recibiría: ${result.toString()}`);
+        }else{
+          await zorpSwapContract.swapV2.staticCall(
+            [WLD_ADDRESS.toLowerCase(), targetToken.address.toLowerCase()], testAmount, 0,
+            { from: userAddress }
+          );
+          log('✅ Simulación del swap real pasó');
+        }
+        log('El contrato funciona — ahora probá el botón "Swap" real en la pantalla de Swap.');
+      }catch(simErr){
+        log('❌ AHORA SÍ tenemos el error real, con el allowance puesto:');
+        log('   ' + (simErr.reason || simErr.shortMessage || simErr.message || JSON.stringify(simErr).slice(0,300)));
+      }
+    }catch(e){
+      log('❌ Error general: ' + e.message);
     }
   };
 
