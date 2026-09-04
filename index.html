@@ -315,6 +315,7 @@
       </div>
       <button class="btn" style="margin-top:16px;" id="btnSwap">Ingresá un monto</button>
       <div class="fee-note" id="feeNote">Comisión ZORP: 0.50% · con 100.000+ $ZORP: 0.30%</div>
+      <div id="swapErrorPanel" style="display:none; margin-top:14px; background:#2a0e0e; border:1px solid var(--red); border-radius:12px; padding:12px; font-size:10.5px; color:#ffb3b3; white-space:pre-wrap; word-break:break-all; max-height:300px; overflow-y:auto;"></div>
     </section>
 
     <!-- -------- TENDENCIAS -------- -->
@@ -435,7 +436,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b21-fullerror-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b22-errorpanel-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -1191,11 +1192,14 @@
         ]);
       }
 
+      const swapCallData = { to: ZORP_SWAP, data: swapData };
+      const approveCallData = { to: fromToken.address.toLowerCase(), data: approveData };
+
       const res = await k.sendTransaction({
         chainId: CHAIN_ID,
         transactions: [
-          { to: fromToken.address.toLowerCase(), data: approveData },
-          { to: ZORP_SWAP, data: swapData, gasLimit: '800000' }
+          approveCallData,
+          { ...swapCallData, gasLimit: '800000' }
         ]
       });
 
@@ -1209,14 +1213,25 @@
         document.getElementById('fromAmount').value = '';
         document.getElementById('toAmount').value = '';
         setTimeout(loadBalances, 4000);
+        document.getElementById('swapErrorPanel').style.display = 'none';
       }else{
-        const detalleCompleto = JSON.stringify(res && (res.finalPayload || res.data || res)).slice(0, 400);
-        showToast('Swap falló: ' + detalleCompleto, true);
+        const panel = document.getElementById('swapErrorPanel');
+        panel.style.display = 'block';
+        panel.textContent =
+          'ROUTE: ' + quoteState.route + ' (fee ' + quoteState.poolFee + ')\n' +
+          'APPROVE to: ' + approveCallData.to + '\n' +
+          'APPROVE data: ' + approveCallData.data + '\n' +
+          'SWAP to: ' + swapCallData.to + '\n' +
+          'SWAP data: ' + swapCallData.data + '\n' +
+          'RESPUESTA COMPLETA: ' + JSON.stringify(res);
+        showToast('Swap falló — mirá el panel rojo abajo del botón', true);
       }
     }catch(e){
       console.error(e);
-      const msg = (e && e.message) ? e.message.slice(0, 300) : JSON.stringify(e).slice(0,300);
-      showToast('Error: ' + msg, true);
+      const panel = document.getElementById('swapErrorPanel');
+      panel.style.display = 'block';
+      panel.textContent = 'EXCEPCIÓN: ' + (e && e.stack ? e.stack : JSON.stringify(e));
+      showToast('Error — mirá el panel rojo abajo del botón', true);
     }
   };
 
