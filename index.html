@@ -436,7 +436,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b22-errorpanel-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b23-nogaslimit-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -1199,7 +1199,7 @@
         chainId: CHAIN_ID,
         transactions: [
           approveCallData,
-          { ...swapCallData, gasLimit: '800000' }
+          swapCallData
         ]
       });
 
@@ -1230,7 +1230,16 @@
       console.error(e);
       const panel = document.getElementById('swapErrorPanel');
       panel.style.display = 'block';
-      panel.textContent = 'EXCEPCIÓN: ' + (e && e.stack ? e.stack : JSON.stringify(e));
+      const detalles = {
+        name: e && e.name,
+        message: e && e.message,
+        code: e && e.code,
+        cause: e && e.cause ? String(e.cause) : undefined,
+        keys: e ? Object.keys(e) : [],
+        propiedades: e ? Object.fromEntries(Object.entries(e).map(([k,v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v)])) : {},
+        stack: e && e.stack
+      };
+      panel.textContent = 'EXCEPCIÓN COMPLETA:\n' + JSON.stringify(detalles, null, 1);
       showToast('Error — mirá el panel rojo abajo del botón', true);
     }
   };
