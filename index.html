@@ -420,6 +420,43 @@
   </div>
 </div>
 
+<!-- ================= MODAL: FICHA DE TOKEN ================= -->
+<div class="modal-overlay" id="tokenDetailModal">
+  <div class="modal" style="position:relative;">
+    <div class="close-x" onclick="closeModal('tokenDetailModal')">✕</div>
+    <div class="modal-handle"></div>
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+      <div class="tk-icon" id="detailIcon" style="width:48px; height:48px; font-size:20px;"></div>
+      <div>
+        <div style="font-size:17px; font-weight:800;" id="detailName">—</div>
+        <div style="font-size:13px; color:var(--text-faint);" id="detailSymbol">—</div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:14px;">
+      <div class="card-title">Tu saldo</div>
+      <div style="font-size:22px; font-weight:800;" id="detailBalance">0</div>
+      <div style="font-size:13px; color:var(--text-faint);" id="detailUsdValue"></div>
+    </div>
+    <div style="font-size:12px; color:var(--text-faint); word-break:break-all; margin-bottom:16px;">
+      Contrato: <span id="detailAddress">—</span>
+    </div>
+    <div class="quick-actions">
+      <button class="qa-btn-plain" id="detailSwapInBtn" style="flex-direction:column; gap:6px;">
+        <span class="qa-ring" style="display:flex; align-items:center; justify-content:center;"><span class="ic">🔄</span></span>
+        <span style="font-size:11px; font-weight:700;">Comprar</span>
+      </button>
+      <button class="qa-btn-plain" id="detailSwapOutBtn" style="flex-direction:column; gap:6px;">
+        <span class="qa-ring" style="display:flex; align-items:center; justify-content:center;"><span class="ic">🔄</span></span>
+        <span style="font-size:11px; font-weight:700;">Vender</span>
+      </button>
+      <button class="qa-btn-plain" id="detailSendBtn" style="flex-direction:column; gap:6px;">
+        <span class="qa-ring" style="display:flex; align-items:center; justify-content:center;"><span class="ic">📤</span></span>
+        <span style="font-size:11px; font-weight:700;">Enviar</span>
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ================= MODAL: SELECCIONAR TOKEN ================= -->
 <div class="modal-overlay" id="tokenPickerModal">
   <div class="modal" style="position:relative;">
@@ -436,7 +473,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b27-nocancelpanel-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b28-sortdetail-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -842,6 +879,13 @@
       let anyShown = false;
       const shownTokens = [];
 
+      // ordenar de mayor a menor valor en USD — los que no tienen precio (usdValue null) van al final
+      priced.sort((a, b) => {
+        const va = a.usdValue === null ? -1 : a.usdValue;
+        const vb = b.usdValue === null ? -1 : b.usdValue;
+        return vb - va;
+      });
+
       // resolver todos los íconos de GeckoTerminal EN PARALELO (evita hacerlo uno por uno)
       const geckoUrls = await Promise.all(priced.map(r =>
         (r.icon && r.icon.startsWith('data:')) ? Promise.resolve(null) : getGeckoIcon(r.address)
@@ -861,6 +905,7 @@
 
         const row = document.createElement('div');
         row.className = 'token-row';
+        row.style.cursor = 'pointer';
         row.innerHTML = `
           <div class="tk-icon">${iconHtml}</div>
           <div class="tk-info">
@@ -871,10 +916,12 @@
             <div class="tk-bal">${trimNum(formatted)}</div>
             ${r.usdValue !== null ? `<div class="tk-usd">$${r.usdValue.toLocaleString('es',{maximumFractionDigits:2})}</div>` : ''}
           </div>`;
+        const tkForDetail = { ...tk, icon: r.icon || geckoUrl || tk.icon, balance: formatted, usdValue: r.usdValue };
+        row.onclick = () => openTokenDetail(tkForDetail);
         listEl.appendChild(row);
         anyShown = true;
 
-        shownTokens.push({ ...tk, icon: r.icon || geckoUrl || tk.icon, balance: formatted });
+        shownTokens.push(tkForDetail);
       });
 
       walletTokens = shownTokens.length ? shownTokens : walletTokens;
@@ -928,6 +975,35 @@
   // ============================================================
   //  Selector de tokens (from / to / send)
   // ============================================================
+  function openTokenDetail(tk){
+    document.getElementById('detailIcon').innerHTML = tkIconHtml(tk);
+    document.getElementById('detailName').textContent = tk.name;
+    document.getElementById('detailSymbol').textContent = tk.symbol;
+    document.getElementById('detailBalance').textContent = trimNum(tk.balance || 0) + ' ' + tk.symbol;
+    document.getElementById('detailUsdValue').textContent = tk.usdValue != null
+      ? '≈ $' + tk.usdValue.toLocaleString('es', {maximumFractionDigits:2})
+      : '';
+    document.getElementById('detailAddress').textContent = tk.address;
+
+    document.getElementById('detailSwapInBtn').onclick = () => {
+      closeModal('tokenDetailModal');
+      goTab('swap');
+      selectToken('to', tk);
+    };
+    document.getElementById('detailSwapOutBtn').onclick = () => {
+      closeModal('tokenDetailModal');
+      goTab('swap');
+      selectToken('from', tk);
+    };
+    document.getElementById('detailSendBtn').onclick = () => {
+      closeModal('tokenDetailModal');
+      selectToken('send', tk);
+      openModal('sendModal');
+    };
+
+    openModal('tokenDetailModal');
+  }
+
   function openTokenPicker(target){
     pickerTarget = target;
     const listEl = document.getElementById('tokenPickerList');
