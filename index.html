@@ -435,7 +435,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b20-quoterchk-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b21-fullerror-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -543,7 +543,7 @@
     t.className = 'toast' + (isError ? ' error' : '');
     t.style.display = 'block';
     clearTimeout(window._toastTimer);
-    window._toastTimer = setTimeout(()=>{ t.style.display='none'; }, isError ? 12000 : 3500);
+    window._toastTimer = setTimeout(()=>{ t.style.display='none'; }, isError ? 25000 : 3500);
   }
 
   function shortAddr(a){
@@ -1210,14 +1210,12 @@
         document.getElementById('toAmount').value = '';
         setTimeout(loadBalances, 4000);
       }else{
-        const errDetail = (res && res.finalPayload && (res.finalPayload.error_code || res.finalPayload.description))
-          || (res && res.data && res.data.error_code)
-          || 'motivo desconocido';
-        showToast('Swap falló: ' + errDetail, true);
+        const detalleCompleto = JSON.stringify(res && (res.finalPayload || res.data || res)).slice(0, 400);
+        showToast('Swap falló: ' + detalleCompleto, true);
       }
     }catch(e){
       console.error(e);
-      const msg = (e && e.message) ? e.message.slice(0, 150) : 'error desconocido';
+      const msg = (e && e.message) ? e.message.slice(0, 300) : JSON.stringify(e).slice(0,300);
       showToast('Error: ' + msg, true);
     }
   };
