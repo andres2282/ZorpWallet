@@ -436,7 +436,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b25-worldswap-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b27-nocancelpanel-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -1229,32 +1229,53 @@
         setTimeout(loadBalances, 4000);
         document.getElementById('swapErrorPanel').style.display = 'none';
       }else{
-        const panel = document.getElementById('swapErrorPanel');
-        panel.style.display = 'block';
-        panel.textContent =
-          'ROUTE: ' + quoteState.route + ' (fee ' + quoteState.poolFee + ')\n' +
-          'APPROVE to: ' + approveCallData.to + '\n' +
-          'APPROVE data: ' + approveCallData.data + '\n' +
-          'SWAP to: ' + swapCallData.to + '\n' +
-          'SWAP data: ' + swapCallData.data + '\n' +
-          'RESPUESTA COMPLETA: ' + JSON.stringify(res);
-        showToast('Swap falló — mirá el panel rojo abajo del botón', true);
+        const codigoRes = (res && res.finalPayload && res.finalPayload.error_code) || (res && res.data && res.data.error_code) || '';
+        const fueCanceladoRes = /user_rejected|user_cancelled|cancelled|rejected/i.test(codigoRes);
+        if(fueCanceladoRes){
+          showToast('Swap cancelado');
+          document.getElementById('swapErrorPanel').style.display = 'none';
+        }else{
+          const panel = document.getElementById('swapErrorPanel');
+          panel.style.display = 'block';
+          panel.textContent =
+            'ROUTE: ' + quoteState.route + ' (fee ' + quoteState.poolFee + ')\n' +
+            'APPROVE to: ' + approveCallData.to + '\n' +
+            'APPROVE data: ' + approveCallData.data + '\n' +
+            'SWAP to: ' + swapCallData.to + '\n' +
+            'SWAP data: ' + swapCallData.data + '\n' +
+            'RESPUESTA COMPLETA: ' + JSON.stringify(res);
+          showToast('Swap falló — mirá el panel rojo abajo del botón', true);
+        }
       }
     }catch(e){
       console.error(e);
-      const panel = document.getElementById('swapErrorPanel');
-      panel.style.display = 'block';
-      const detalles = {
-        name: e && e.name,
-        message: e && e.message,
-        code: e && e.code,
-        cause: e && e.cause ? String(e.cause) : undefined,
-        keys: e ? Object.keys(e) : [],
-        propiedades: e ? Object.fromEntries(Object.entries(e).map(([k,v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v)])) : {},
-        stack: e && e.stack
-      };
-      panel.textContent = 'EXCEPCIÓN COMPLETA:\n' + JSON.stringify(detalles, null, 1);
-      showToast('Error — mirá el panel rojo abajo del botón', true);
+      const codigo = (e && e.code) || '';
+      const mensaje = (e && e.message) || '';
+      const fueCancelado = /user_rejected|user_cancelled|cancelled|rejected/i.test(codigo + ' ' + mensaje);
+
+      if(fueCancelado){
+        showToast('Swap cancelado');
+        document.getElementById('swapErrorPanel').style.display = 'none';
+      }else{
+        const panel = document.getElementById('swapErrorPanel');
+        panel.style.display = 'block';
+        const detalles = {
+          name: e && e.name,
+          message: e && e.message,
+          code: e && e.code,
+          cause: e && e.cause ? String(e.cause) : undefined,
+          keys: e ? Object.keys(e) : [],
+          propiedades: e ? Object.fromEntries(Object.entries(e).map(([k,v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v)])) : {},
+          stack: e && e.stack
+        };
+        panel.textContent = 'EXCEPCIÓN COMPLETA:\n' + JSON.stringify(detalles, null, 1);
+        showToast('Error — mirá el panel rojo abajo del botón', true);
+      }
+    }finally{
+      // pase lo que pase (éxito, error, o cancelación en World App), siempre
+      // dejamos el botón y el estado listos para un próximo intento
+      quoteState.loading = false;
+      updateSwapButton();
     }
   };
 
