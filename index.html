@@ -435,14 +435,13 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b18-freshread-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b19-gaslimit-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
   const ZORP_TOKEN     = '0xaB841a1E0cC65A3cC41b842C85E0cE51C87fb28E';
-  const ZORP_SWAP       = '0x7CeaA9015b3E47e68292344ecbFC8dfAA1d064fe'; // ZorpSwapGenericV2 — usa Permit2 en vez de approve() clásico (World App bloquea approve() suelto)
+  const ZORP_SWAP       = '0x108801a6Ed54c0678aC2eD2F23A2B6Fd4E9062eC'; // ZorpSwapGeneric — contrato propio con swapV3/swapV2, patrón probado en producción
   const ZORP_TREASURY  = '0x3D3C7AB150B0414a8c9a1d2A802193349346A186'; // recibe la comisión directo (patrón LOOT)
-  const PERMIT2        = '0x000000000022D473030F116dDEE9F6B43aC78BA3'; // Permit2 — dirección estándar, la misma en toda EVM
   const V3_ROUTER_REAL = '0x1072a0a713a23a2da9bab99e9cd68187970e89a4';
   const V2_ROUTER_REAL = '0x541ab7c31a119441ef3575f6973277de0ef460bd';
   const WLD_ADDRESS    = '0x2cFc85d8E48F8EAB294be644d9E25C3030863003';
@@ -1018,49 +1017,24 @@
   const quoteState = { loading:false, noRoute:false, outAmount:null, route:null, poolFee:null };
   let quoteDebounceTimer = null;
 
-  // ---- detección de ruta real: revisa TODOS los fee tiers de V3 y se queda
-  // con el que tiene más liquidez real (balance del token en el pool) —
-  // antes se quedaba con el PRIMER pool que existía, aunque estuviera vacío,
-  // lo cual rompía el swap para tokens cuyo pool real está en un fee tier
-  // que no es el primero de la lista (ej: ORO está en 10000, no en 500) ----
+  // ---- detección de ruta real: prueba fee tiers de V3 primero, cae a V2 si no hay pool ----
   const V3_FACTORY_ABI = ['function getPool(address,address,uint24) view returns (address)'];
-  const ERC20_BALANCE_ABI = ['function balanceOf(address) view returns (uint256)'];
   const FEE_TIERS = [500, 3000, 10000, 100];
 
   async function findRoute(tokenA, tokenB){
     try{
       const p = await getReadProvider();
       const factory = new ethers.Contract(UNISWAP_V3_FACTORY, V3_FACTORY_ABI, p);
-      const tokenBContract = new ethers.Contract(tokenB, ERC20_BALANCE_ABI, p);
-
-      let mejorFee = null;
-      let mejorLiquidez = 0n;
-
       for(const fee of FEE_TIERS){
         try{
           const pool = await factory.getPool(tokenA, tokenB, fee);
           if(pool && pool !== ethers.ZeroAddress){
-            // el pool existe — medimos cuánto tokenB tiene adentro para
-            // saber si es un pool real con liquidez o uno vacío/fantasma
-            try{
-              const balance = await tokenBContract.balanceOf(pool);
-              if(balance > mejorLiquidez){
-                mejorLiquidez = balance;
-                mejorFee = fee;
-              }
-            }catch(e){
-              // si no podemos leer el balance pero es el único candidato hasta ahora, lo guardamos igual
-              if(mejorFee === null) mejorFee = fee;
-            }
+            return { type: 'v3', poolFee: fee };
           }
         }catch(e){ /* seguir probando */ }
       }
-
-      if(mejorFee !== null){
-        return { type: 'v3', poolFee: mejorFee };
-      }
     }catch(e){ /* sin RPC, seguir a V2 */ }
-    // si no hay pool V3 con liquidez en ningún fee tier, asumimos V2 (Puf) como respaldo
+    // si no hay pool V3 en ningún fee tier, asumimos V2 (Puf) como respaldo
     return { type: 'v2', poolFee: null };
   }
 
@@ -1170,16 +1144,9 @@
       const minOut = quoteState.outAmount * 0.80;
       const amountOutMin = ethers.parseUnits(minOut.toFixed(Number(toToken.decimals) > 18 ? 18 : Number(toToken.decimals)), toToken.decimals);
 
-      // 1) permiso de Permit2 del monto COMPLETO al contrato ZorpSwapGenericV2
-      //    (él descuenta su comisión adentro). Se usa Permit2 en vez de approve()
-      //    clásico porque World App bloquea el approve() suelto de ERC-20 desde
-      //    mini apps — la expiración va SIEMPRE en 0, se consume en este mismo lote.
-      const permit2Iface = new ethers.Interface([
-        'function approve(address token, address spender, uint160 amount, uint48 expiration)'
-      ]);
-      const approveData = permit2Iface.encodeFunctionData('approve', [
-        fromToken.address.toLowerCase(), ZORP_SWAP, amountWei, 0
-      ]);
+      // 1) approve del monto COMPLETO al contrato ZorpSwapGeneric (él descuenta su comisión adentro)
+      const erc20Iface = new ethers.Interface(ERC20_ABI);
+      const approveData = erc20Iface.encodeFunctionData('approve', [ZORP_SWAP, amountWei]);
 
       // 2) llamar swapV3() o swapV2() del contrato, según la ruta detectada
       let swapData;
@@ -1207,8 +1174,8 @@
       const res = await k.sendTransaction({
         chainId: CHAIN_ID,
         transactions: [
-          { to: PERMIT2, data: approveData },
-          { to: ZORP_SWAP, data: swapData }
+          { to: fromToken.address.toLowerCase(), data: approveData },
+          { to: ZORP_SWAP, data: swapData, gasLimit: '800000' }
         ]
       });
 
@@ -1549,52 +1516,43 @@
       const p = await getReadProvider();
       const wldContract = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, p);
       const wldBal = await wldContract.balanceOf(userAddress);
-      log(`Saldo WLD leído on-chain: ${ethers.formatUnits(wldBal, 18)} (raw: ${wldBal.toString()})`);
       const testAmount = wldBal / 10n > ethers.parseUnits('0.001', 18) ? ethers.parseUnits('0.001', 18) : wldBal / 10n;
       log(`Monto de prueba: ${ethers.formatUnits(testAmount, 18)} WLD`);
-      if(testAmount === 0n){ log('❌ Saldo de WLD insuficiente para la prueba (necesitás al menos un poco más de WLD). Este NO es un bug del contrato — es que en este momento tenés muy poco WLD.'); return; }
+      if(testAmount === 0n){ log('❌ Sin saldo de WLD suficiente'); return; }
 
-      log('Paso 1/2: pidiendo la firma del permiso de Permit2 (no gasta tu WLD, solo da permiso — expiración 0, se consume en este mismo lote)...');
-      const permit2Iface = new ethers.Interface([
-        'function approve(address token, address spender, uint160 amount, uint48 expiration)',
-        'function allowance(address owner, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)'
-      ]);
-      const approveData = permit2Iface.encodeFunctionData('approve', [WLD_ADDRESS, ZORP_SWAP, testAmount, 0]);
+      log('Paso 1/2: pidiendo la firma del APPROVE real (no gasta tu WLD, solo da permiso)...');
+      const erc20Iface = new ethers.Interface(ERC20_ABI);
+      const approveData = erc20Iface.encodeFunctionData('approve', [ZORP_SWAP, testAmount]);
       const resApprove = await k.sendTransaction({
         chainId: CHAIN_ID,
-        transactions: [{ to: PERMIT2, data: approveData }]
+        transactions: [{ to: WLD_ADDRESS, data: approveData }]
       });
       const approveOk = (resApprove && resApprove.data && resApprove.data.status === 'success')
         || (resApprove && resApprove.finalPayload && resApprove.finalPayload.status !== 'error');
       if(!approveOk){
-        log('❌ El permiso de Permit2 ya falló acá: ' + JSON.stringify(resApprove).slice(0,300));
+        log('❌ El approve real ya falló acá: ' + JSON.stringify(resApprove).slice(0,300));
         return;
       }
-      log('✅ Permiso de Permit2 confirmado');
+      log('✅ Approve real confirmado');
 
       // reintentos con provider fresco (no cacheado) por si el RPC en caché tiene lag
-      log('Esperando confirmación real del allowance en Permit2 (hasta 50s, con reintentos)...');
+      log('Esperando confirmación real del allowance (hasta 20s, con reintentos)...');
       let allowanceAhora = 0n;
-      const totalIntentos = 10;
-      for(let intento = 0; intento < totalIntentos; intento++){
-        await new Promise(r => setTimeout(r, 5000));
+      for(let intento = 0; intento < 5; intento++){
+        await new Promise(r => setTimeout(r, 4000));
         try{
           const freshProvider = new ethers.JsonRpcProvider(RPC_ENDPOINTS[intento % RPC_ENDPOINTS.length]);
-          const permit2Contract = new ethers.Contract(PERMIT2, permit2Iface, freshProvider);
-          const [amount] = await permit2Contract.allowance(userAddress, WLD_ADDRESS, ZORP_SWAP);
-          allowanceAhora = amount;
-          log(`  intento ${intento+1}/${totalIntentos}: allowance en Permit2 = ${ethers.formatUnits(allowanceAhora, 18)} (RPC: ${RPC_ENDPOINTS[intento % RPC_ENDPOINTS.length]})`);
+          const freshWld = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, freshProvider);
+          allowanceAhora = await freshWld.allowance(userAddress, ZORP_SWAP);
+          log(`  intento ${intento+1}: allowance = ${ethers.formatUnits(allowanceAhora, 18)} (RPC: ${RPC_ENDPOINTS[intento % RPC_ENDPOINTS.length]})`);
           if(allowanceAhora > 0n) break;
         }catch(e){
-          log(`  intento ${intento+1}/${totalIntentos}: error leyendo (${e.message.slice(0,60)})`);
+          log(`  intento ${intento+1}: error leyendo (${e.message.slice(0,60)})`);
         }
       }
-      log(`Allowance final en Permit2: ${ethers.formatUnits(allowanceAhora, 18)}`);
-      if(allowanceAhora === 0n){
-        log('⚠️ El allowance en Permit2 sigue en 0 después de 50s. Revisá el hash de ESTA transacción puntual en el explorador para confirmar qué pasó.');
-      }
+      log(`Allowance final: ${ethers.formatUnits(allowanceAhora, 18)}`);
 
-      log('Paso 2/2: simulando swapV3/swapV2 con el permiso de Permit2 YA puesto de verdad...');
+      log('Paso 2/2: simulando swapV3/swapV2 con el allowance YA puesto de verdad...');
       const route = await findRoute(WLD_ADDRESS.toLowerCase(), targetToken.address.toLowerCase());
       const zorpSwapAbi = [
         'function swapV3(address tokenIn, address tokenOut, uint24 poolFee, uint256 amountIn, uint256 minimoOut) returns (uint256)',
