@@ -436,12 +436,14 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b24-realv3router-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b25-worldswap-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
   const ZORP_TOKEN     = '0xaB841a1E0cC65A3cC41b842C85E0cE51C87fb28E';
-  const ZORP_SWAP       = '0x86842989aBCB188a0866Ad4d9D7bb438Ebf925F9'; // ZorpSwapGeneric v2 — con el router V3 REAL confirmado (0x091AD9e2...) en vez del que no respondía a factory()
+  const ZORP_SWAP       = '0x03221fFc811BDfc7600c7664460341069c5a83Ff'; // ZorpSwapGeneric v3 — con soporte para World Swap (tercer router) además de V2/V3 Uniswap
+  const WORLDSWAP_ROUTER = '0xaf628e998656968a8e78bf183d2a07234d6afa29'; // DEX separado, misma interfaz que Uniswap V2, propia factory 0x02E72c4e...
+  const WORLDSWAP_FACTORY = '0x02E72c4edf877FBacfD1fC594422004D9746E14D';
   const ZORP_TREASURY  = '0x3D3C7AB150B0414a8c9a1d2A802193349346A186'; // recibe la comisión directo (patrón LOOT)
   const V3_ROUTER_REAL = '0x091AD9e2E6E5eD44c1c66dB50e49A601F9f36cF6'; // CONFIRMADO real (responde factory() correctamente) — 0x1072a0a7... NO era un router V3 válido
   const V2_ROUTER_REAL = '0x541ab7c31a119441ef3575f6973277de0ef460bd';
@@ -1036,8 +1038,19 @@
         }catch(e){ /* seguir probando */ }
       }
     }catch(e){ /* sin RPC, seguir a V2 */ }
-    // si no hay pool V3 en ningún fee tier, asumimos V2 (Puf) como respaldo
-    return { type: 'v2', poolFee: null };
+
+    // sin pool V3: probar si el par existe en la fábrica de World Swap
+    try{
+      const p = await getReadProvider();
+      const worldSwapFactory = new ethers.Contract(WORLDSWAP_FACTORY, ['function getPair(address,address) view returns (address)'], p);
+      const pair = await worldSwapFactory.getPair(tokenA, tokenB);
+      if(pair && pair !== ethers.ZeroAddress){
+        return { type: 'v2', poolFee: null, worldSwap: true };
+      }
+    }catch(e){ /* seguir a V2 normal */ }
+
+    // si no hay pool en ningún lado anterior, asumimos V2 (Puf) como último respaldo
+    return { type: 'v2', poolFee: null, worldSwap: false };
   }
 
   // ---- verifica con el Quoter oficial si la ruta directa realmente cotiza ----
@@ -1097,6 +1110,7 @@
     quoteState.loading = false;
     quoteState.route = route.type;
     quoteState.poolFee = route.poolFee;
+    quoteState.worldSwap = route.worldSwap || false;
 
     if(!priceFrom || !priceTo){
       quoteState.noRoute = true;
@@ -1185,10 +1199,10 @@
       }else{
         const path = [fromToken.address.toLowerCase(), toToken.address.toLowerCase()];
         const zorpSwapIface = new ethers.Interface([
-          'function swapV2(address[] path, uint256 amountIn, uint256 minimoOut)'
+          'function swapV2(address[] path, uint256 amountIn, uint256 minimoOut, bool usarWorldSwap)'
         ]);
         swapData = zorpSwapIface.encodeFunctionData('swapV2', [
-          path, amountWei, amountOutMin
+          path, amountWei, amountOutMin, !!quoteState.worldSwap
         ]);
       }
 
