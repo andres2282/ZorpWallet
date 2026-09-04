@@ -436,14 +436,14 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b23-nogaslimit-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b24-realv3router-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
   const ZORP_TOKEN     = '0xaB841a1E0cC65A3cC41b842C85E0cE51C87fb28E';
-  const ZORP_SWAP       = '0x108801a6Ed54c0678aC2eD2F23A2B6Fd4E9062eC'; // ZorpSwapGeneric — contrato propio con swapV3/swapV2, patrón probado en producción
+  const ZORP_SWAP       = '0x86842989aBCB188a0866Ad4d9D7bb438Ebf925F9'; // ZorpSwapGeneric v2 — con el router V3 REAL confirmado (0x091AD9e2...) en vez del que no respondía a factory()
   const ZORP_TREASURY  = '0x3D3C7AB150B0414a8c9a1d2A802193349346A186'; // recibe la comisión directo (patrón LOOT)
-  const V3_ROUTER_REAL = '0x1072a0a713a23a2da9bab99e9cd68187970e89a4';
+  const V3_ROUTER_REAL = '0x091AD9e2E6E5eD44c1c66dB50e49A601F9f36cF6'; // CONFIRMADO real (responde factory() correctamente) — 0x1072a0a7... NO era un router V3 válido
   const V2_ROUTER_REAL = '0x541ab7c31a119441ef3575f6973277de0ef460bd';
   const WLD_ADDRESS    = '0x2cFc85d8E48F8EAB294be644d9E25C3030863003';
   const UNISWAP_V3_FACTORY = '0x7a5028BDa40e7B173C278C5342087826455ea25a';
