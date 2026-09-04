@@ -435,7 +435,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b19-gaslimit-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b20-quoterchk-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -446,6 +446,7 @@
   const V2_ROUTER_REAL = '0x541ab7c31a119441ef3575f6973277de0ef460bd';
   const WLD_ADDRESS    = '0x2cFc85d8E48F8EAB294be644d9E25C3030863003';
   const UNISWAP_V3_FACTORY = '0x7a5028BDa40e7B173C278C5342087826455ea25a';
+  const UNISWAP_V3_QUOTER = '0x10158D43e6cc414deE1Bd1eB0EfC6a5cBCfF244c';
 
   const RPC_ENDPOINTS = [
     'https://worldchain-mainnet.g.alchemy.com/public',
@@ -1038,6 +1039,25 @@
     return { type: 'v2', poolFee: null };
   }
 
+  // ---- verifica con el Quoter oficial si la ruta directa realmente cotiza ----
+  const QUOTER_ABI = [
+    'function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)'
+  ];
+
+  async function verificarRutaDirecta(tokenIn, tokenOut, poolFee, amountIn){
+    try{
+      const p = await getReadProvider();
+      const quoter = new ethers.Contract(UNISWAP_V3_QUOTER, QUOTER_ABI, p);
+      const result = await quoter.quoteExactInputSingle.staticCall([
+        tokenIn, tokenOut, amountIn, poolFee, 0
+      ]);
+      return result[0]; // amountOut
+    }catch(e){
+      console.error('Quoter directo falló:', e.message);
+      return null;
+    }
+  }
+
   async function getUsdPrice(address){
     try{
       const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`);
@@ -1459,6 +1479,17 @@
           log(`Liquidez actual del pool: ${liq.toString()}`);
           if(liq === 0n){
             log('❌ El pool EXISTE pero tiene liquidez CERO — por eso revierte el swap');
+          }
+
+          // verificar con el Quoter OFICIAL si la ruta directa realmente cotiza
+          log('Consultando el Quoter oficial de Uniswap para la ruta directa...');
+          const cotizacion = await verificarRutaDirecta(
+            WLD_ADDRESS.toLowerCase(), targetToken.address.toLowerCase(), route.poolFee, testAmount
+          );
+          if(cotizacion === null){
+            log('❌ El Quoter oficial RECHAZÓ la ruta directa — el pool existe pero no puede completar este swap tal cual (puede necesitar una ruta multi-hop)');
+          }else{
+            log(`✅ El Quoter oficial SÍ cotiza la ruta directa: recibirías ${cotizacion.toString()}`);
           }
         }catch(e){
           log(`⚠️ No se pudo verificar liquidez del pool: ${e.message}`);
