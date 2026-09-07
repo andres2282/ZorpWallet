@@ -282,6 +282,38 @@
     background:var(--zorp-dim); color:#0e1f06; font-size:12px; font-weight:700; padding:8px 14px; border-radius:10px; border:none;
   }
 
+  /* ---- Tokens lanzados ---- */
+  .link-btn{
+    display:block; width:100%; background:none; border:none; padding:9px 0 2px;
+    color:var(--zorp); font-size:12.5px; font-weight:700;
+  }
+  .lz-row{
+    display:flex; align-items:center; gap:11px; padding:12px 4px;
+    border-bottom:1px solid var(--border); cursor:pointer;
+  }
+  .lz-row:last-child{border-bottom:none;}
+  .lz-row:active{background:var(--panel-2);}
+  .lz-info{flex:1; min-width:0;}
+  .lz-nom{font-size:14px; font-weight:700; color:var(--text);}
+  .lz-sub{font-size:11px; color:var(--text-faint); margin-top:2px;}
+  .lz-barra{height:3px; background:var(--panel-2); border-radius:2px; margin-top:7px; overflow:hidden;}
+  .lz-barra i{display:block; height:100%; background:var(--zorp); border-radius:2px;}
+  .lz-grad{
+    font-size:8.5px; font-weight:800; letter-spacing:.4px; text-transform:uppercase;
+    color:var(--zorp); border:1px solid var(--zorp-dim); border-radius:6px; padding:1px 5px;
+  }
+  .lz-dir{
+    display:inline-flex; align-items:center; gap:6px; background:var(--panel-2);
+    border:1px solid var(--border); border-radius:9px; padding:5px 9px;
+    font-size:11px; color:var(--text-dim); margin-top:8px;
+  }
+  .lz-quote{font-size:12px; color:var(--text-dim); margin-top:8px; min-height:17px;}
+  .lz-quote b{color:var(--zorp);}
+  .lz-max{
+    background:none; border:none; color:var(--zorp); font-size:11px; font-weight:700; padding:0;
+  }
+  .lz-fila{display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;}
+
   /* ---- Banner de anuncios ---- */
   .ad-banner{
     position:relative; margin:14px 0 4px; border-radius:16px; overflow:hidden;
@@ -344,7 +376,7 @@
   .opt-btn.active{background:var(--zorp-dim); border-color:var(--zorp); color:#08130a;}
   .crear-resumen{font-size:12.5px; color:var(--text-dim); line-height:1.8;}
   .crear-resumen .tot{color:var(--text); font-weight:700;}
-  #crearOut, #adsOut{
+  #crearOut, #adsOut, #lzOut{
     font-size:11.5px; line-height:1.7; color:var(--text-dim);
     white-space:pre-wrap; word-break:break-all; margin-top:14px;
   }
@@ -404,6 +436,7 @@
       <button class="launch-btn" onclick="goTab('crear')">
         <img id="launchIcon" alt=""><span>Lanzar un token</span>
       </button>
+      <button class="link-btn" onclick="goTab('lanzados')">Ver los últimos tokens lanzados →</button>
 
       <div class="card">
         <div class="card-title"><img class="icimg" src="data:image/webp;base64,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" alt="">Tus tokens</div>
@@ -462,6 +495,52 @@
 
       <button class="btn" id="btnCrear">Crear token</button>
       <div id="crearOut"></div>
+    </section>
+
+    <!-- -------- TOKENS LANZADOS -------- -->
+    <section class="screen" id="screen-lanzados">
+      <div class="crear-head">
+        <button class="back-btn" onclick="goTab('inicio')">←</button>
+        <div class="section-title" style="margin:0;">Tokens lanzados</div>
+        <button class="trend-refresh" style="margin-left:auto;" onclick="cargarLanzados(true)">↻</button>
+      </div>
+      <div class="card">
+        <div id="lzLista"><div class="empty-state">Cargando…</div></div>
+      </div>
+    </section>
+
+    <!-- -------- FICHA DE TOKEN LANZADO -------- -->
+    <section class="screen" id="screen-lanzado">
+      <div class="crear-head">
+        <button class="back-btn" onclick="goTab('lanzados')">←</button>
+        <div class="section-title" style="margin:0;" id="lzTitulo">—</div>
+      </div>
+
+      <div class="card">
+        <div id="lzCabecera"></div>
+      </div>
+
+      <div class="card" id="lzComprarCard">
+        <div class="lz-fila">
+          <div class="field-label" style="margin:0;">Comprar con WLD</div>
+          <button class="lz-max" onclick="lzMax('compra')">MÁX</button>
+        </div>
+        <input class="field" id="lzMontoCompra" inputmode="decimal" placeholder="0.0">
+        <div class="lz-quote" id="lzQuoteCompra"></div>
+        <button class="btn" id="btnLzComprar" style="margin-top:10px;">Comprar</button>
+      </div>
+
+      <div class="card" id="lzVenderCard">
+        <div class="lz-fila">
+          <div class="field-label" style="margin:0;">Vender</div>
+          <button class="lz-max" onclick="lzMax('venta')">MÁX</button>
+        </div>
+        <input class="field" id="lzMontoVenta" inputmode="decimal" placeholder="0.0">
+        <div class="lz-quote" id="lzQuoteVenta"></div>
+        <button class="btn secondary" id="btnLzVender" style="margin-top:10px;">Vender</button>
+      </div>
+
+      <div id="lzOut"></div>
     </section>
 
     <!-- -------- PUBLICITAR -------- -->
@@ -822,6 +901,7 @@
     if(name === 'tendencias' || name === 'swap') loadTrending();
     if(name === 'crear') initCrear();
     if(name === 'anunciar') initAnunciar();
+    if(name === 'lanzados') cargarLanzados();
   }
 
   function openModal(id){ document.getElementById(id).classList.add('show'); }
@@ -1616,6 +1696,302 @@
     }
   };
 
+
+  // ============================================================
+  //  TOKENS LANZADOS — lista y operativa sobre la curva enlazada.
+  //  Antes de graduarse (1500 WLD) el token NO tiene pool en ningún
+  //  DEX, así que no puede salir en Tendencias ni en el swap: se
+  //  compra y se vende contra su propia curva, a través de GekRouter.
+  //  ⚠️ GEK_ROUTER tiene que estar en Contract Entrypoints.
+  // ============================================================
+  const FACTORY_LISTA_ABI = [
+    'function totalTokensCreated() view returns (uint256)',
+    'function allTokens(uint256) view returns (address)',
+    'function curveOf(address) view returns (address)'
+  ];
+
+  const CURVE_ABI = [
+    'function quoteBuy(uint256) view returns (uint256, uint256, uint256)',
+    'function quoteSell(uint256) view returns (uint256, uint256, uint256)',
+    'function realQuoteRaised() view returns (uint256)',
+    'function graduationTarget() view returns (uint256)',
+    'function graduated() view returns (bool)',
+    'function token() view returns (address)',
+    'function creator() view returns (address)'
+  ];
+
+  const ROUTER_ABI = [
+    'function comprar(address curva, uint256 montoEntrada, uint256 minSalida)',
+    'function vender(address curva, uint256 tokensEntrada, uint256 minSalida)'
+  ];
+
+  const LZ_MAX_LISTA = 12;      // cuántos lanzamientos recientes se traen
+  const LZ_SLIPPAGE  = 3;       // % de tolerancia
+
+  let lanzados      = [];
+  let lanzadosAt    = 0;
+  let lzActual      = null;     // token abierto en la ficha
+  let lzSaldo       = 0n;       // saldo del usuario en ese token
+  let lzQuoteTimer  = null;
+  let lzEnviando    = false;
+  let lzIniciado    = false;
+
+  async function cargarLanzados(force){
+    const el = document.getElementById('lzLista');
+    if(!force && lanzados.length && (Date.now() - lanzadosAt) < 60000){
+      renderLanzados(); return;
+    }
+    if(el && !lanzados.length) el.innerHTML = '<div class="empty-state">Cargando…</div>';
+
+    try{
+      const p = await getReadProvider();
+      const f = new ethers.Contract(GEK_FACTORY, FACTORY_LISTA_ABI, p);
+      const total = Number(await f.totalTokensCreated());
+      if(total === 0){
+        lanzados = []; renderLanzados(); return;
+      }
+
+      const idx = [];
+      for(let i = 0; i < Math.min(LZ_MAX_LISTA, total); i++) idx.push(total - 1 - i);
+
+      lanzados = await Promise.all(idx.map(async (i) => {
+        const addr  = await f.allTokens(i);
+        const curva = await f.curveOf(addr);
+        const t = new ethers.Contract(addr,  ERC20_ABI, p);
+        const c = new ethers.Contract(curva, CURVE_ABI, p);
+        const [nombre, simbolo, dec, raised, meta, grad] = await Promise.all([
+          t.name().catch(()=> '?'),
+          t.symbol().catch(()=> '?'),
+          t.decimals().catch(()=> 18),
+          c.realQuoteRaised().catch(()=> 0n),
+          c.graduationTarget().catch(()=> 0n),
+          c.graduated().catch(()=> false)
+        ]);
+        return {
+          address: addr, curva, nombre, simbolo,
+          decimals: Number(dec), raised, meta, graduado: grad
+        };
+      }));
+
+      lanzadosAt = Date.now();
+      renderLanzados();
+    }catch(e){
+      console.error('lanzados', e);
+      if(el) el.innerHTML = '<div class="empty-state">No se pudo leer la factory<br><br>' +
+        '<span style="color:var(--zorp); cursor:pointer;" onclick="cargarLanzados(true)">↻ Reintentar</span></div>';
+    }
+  }
+
+  function renderLanzados(){
+    const el = document.getElementById('lzLista');
+    if(!el) return;
+    if(!lanzados.length){
+      el.innerHTML = '<div class="empty-state">Todavía no se lanzó ningún token</div>';
+      return;
+    }
+    el.innerHTML = '';
+    lanzados.forEach(t => {
+      const meta = t.meta > 0n ? parseFloat(ethers.formatUnits(t.meta, 18)) : 0;
+      const rec  = parseFloat(ethers.formatUnits(t.raised, 18));
+      const pct  = meta > 0 ? Math.min(100, (rec / meta) * 100) : 0;
+
+      const row = document.createElement('div');
+      row.className = 'lz-row';
+      row.innerHTML =
+        '<div class="tk-icon" style="width:36px; height:36px; font-size:13px;">' +
+          tkIconHtml({ icon: null, symbol: t.simbolo }) +
+        '</div>' +
+        '<div class="lz-info">' +
+          '<div class="lz-nom">' + esc(t.nombre) + ' · ' + esc(t.simbolo) +
+            (t.graduado ? ' <span class="lz-grad">graduado</span>' : '') + '</div>' +
+          '<div class="lz-sub">' + trimNum(rec) + ' / ' + trimNum(meta) + ' WLD · ' + pct.toFixed(1) + '%</div>' +
+          '<div class="lz-barra"><i style="width:' + pct + '%"></i></div>' +
+        '</div>';
+      row.onclick = () => abrirLanzado(t);
+      el.appendChild(row);
+    });
+  }
+
+  async function abrirLanzado(t){
+    lzActual = t;
+    lzSaldo  = 0n;
+    goTab('lanzado');
+
+    document.getElementById('lzTitulo').textContent = t.simbolo;
+    document.getElementById('lzMontoCompra').value = '';
+    document.getElementById('lzMontoVenta').value  = '';
+    document.getElementById('lzQuoteCompra').textContent = '';
+    document.getElementById('lzQuoteVenta').textContent  = '';
+    document.getElementById('lzOut').textContent = '';
+
+    if(!lzIniciado){
+      lzIniciado = true;
+      document.getElementById('lzMontoCompra').addEventListener('input', ()=> lzPedirQuote('compra'));
+      document.getElementById('lzMontoVenta').addEventListener('input',  ()=> lzPedirQuote('venta'));
+    }
+
+    const meta = t.meta > 0n ? parseFloat(ethers.formatUnits(t.meta, 18)) : 0;
+    const rec  = parseFloat(ethers.formatUnits(t.raised, 18));
+    const pct  = meta > 0 ? Math.min(100, (rec / meta) * 100) : 0;
+
+    document.getElementById('lzCabecera').innerHTML =
+      '<div class="lz-nom" style="font-size:17px;">' + esc(t.nombre) + '</div>' +
+      '<div class="lz-sub" style="font-size:12px;">' + esc(t.simbolo) + '</div>' +
+      '<div class="lz-sub" style="margin-top:10px;">Avance a la graduación: <b style="color:var(--text);">' +
+        trimNum(rec) + ' / ' + trimNum(meta) + ' WLD</b> (' + pct.toFixed(1) + '%)</div>' +
+      '<div class="lz-barra" style="height:5px;"><i style="width:' + pct + '%"></i></div>' +
+      '<div class="lz-dir" onclick="copiarTexto(\'' + esc(t.address) + '\')">' +
+        esc(shortAddr(t.address)) + ' · copiar</div>' +
+      (t.graduado
+        ? '<div class="lz-sub" style="margin-top:10px; color:var(--zorp);">Ya se graduó: ahora tiene pool en Uniswap. ' +
+          'Conviene operarlo desde la pantalla de Swap.</div>'
+        : '');
+
+    // si ya se graduó, la curva queda cerrada
+    document.getElementById('lzComprarCard').style.display = t.graduado ? 'none' : 'block';
+    document.getElementById('lzVenderCard').style.display  = t.graduado ? 'none' : 'block';
+
+    // saldo del usuario en ese token
+    try{
+      const p = await getReadProvider();
+      const c = new ethers.Contract(t.address, ERC20_ABI, p);
+      lzSaldo = await c.balanceOf(userAddress);
+      document.getElementById('lzQuoteVenta').textContent =
+        'Tenés ' + trimNum(ethers.formatUnits(lzSaldo, t.decimals)) + ' ' + t.simbolo;
+    }catch(e){}
+  }
+
+  function lzMax(lado){
+    if(!lzActual) return;
+    if(lado === 'compra'){
+      const wld = walletTokens.find(t => (t.address || '').toLowerCase() === WLD_ADDRESS.toLowerCase());
+      if(wld && wld.balance != null){
+        document.getElementById('lzMontoCompra').value = trimNum(wld.balance);
+        lzPedirQuote('compra');
+      }
+    }else{
+      document.getElementById('lzMontoVenta').value =
+        trimNum(ethers.formatUnits(lzSaldo, lzActual.decimals));
+      lzPedirQuote('venta');
+    }
+  }
+
+  function lzPedirQuote(lado){
+    if(lzQuoteTimer) clearTimeout(lzQuoteTimer);
+    lzQuoteTimer = setTimeout(()=> lzQuote(lado), 400);
+  }
+
+  async function lzQuote(lado){
+    if(!lzActual) return;
+    const esCompra = lado === 'compra';
+    const inp = document.getElementById(esCompra ? 'lzMontoCompra' : 'lzMontoVenta');
+    const out = document.getElementById(esCompra ? 'lzQuoteCompra' : 'lzQuoteVenta');
+    const v = num(inp.value);
+    if(!v || v <= 0){ out.textContent = ''; return; }
+
+    try{
+      const p = await getReadProvider();
+      const c = new ethers.Contract(lzActual.curva, CURVE_ABI, p);
+      const entrada = ethers.parseUnits(String(v).replace(',', '.'),
+                                        esCompra ? 18 : lzActual.decimals);
+      const r = esCompra ? await c.quoteBuy(entrada) : await c.quoteSell(entrada);
+      const salida = r[0];
+      out.innerHTML = esCompra
+        ? 'Recibís ≈ <b>' + trimNum(ethers.formatUnits(salida, lzActual.decimals)) + ' ' + esc(lzActual.simbolo) + '</b>'
+        : 'Recibís ≈ <b>' + trimNum(ethers.formatUnits(salida, 18)) + ' WLD</b>';
+      out.dataset.salida = salida.toString();
+    }catch(e){
+      out.textContent = 'No se pudo cotizar';
+      delete out.dataset.salida;
+    }
+  }
+
+  function lzMinSalida(salidaStr){
+    const s = BigInt(salidaStr);
+    return (s * BigInt(10000 - LZ_SLIPPAGE * 100)) / 10000n;
+  }
+
+  async function lzOperar(esCompra){
+    if(lzEnviando || !lzActual) return;
+    const out = document.getElementById('lzOut');
+    const inp = document.getElementById(esCompra ? 'lzMontoCompra' : 'lzMontoVenta');
+    const qEl = document.getElementById(esCompra ? 'lzQuoteCompra' : 'lzQuoteVenta');
+
+    const v = num(inp.value);
+    if(!v || v <= 0){ showToast('Escribí un monto', true); return; }
+    if(!qEl.dataset.salida){ showToast('Esperá la cotización', true); return; }
+
+    const k = getMiniKit();
+    if(!k){ showToast('MiniKit no disponible', true); return; }
+
+    try{
+      lzEnviando = true;
+      out.textContent = 'Preparando la transacción…';
+
+      const entrada = ethers.parseUnits(String(v).replace(',', '.'),
+                                        esCompra ? 18 : lzActual.decimals);
+      const minSal  = lzMinSalida(qEl.dataset.salida);
+      const routerIface = new ethers.Interface(ROUTER_ABI);
+      const transactions = [];
+
+      if(esCompra){
+        // el router mueve el WLD del usuario: hace falta autorizarlo
+        const erc20Iface = new ethers.Interface(ERC20_ABI);
+        transactions.push({
+          to: WLD_ADDRESS.toLowerCase(),
+          data: erc20Iface.encodeFunctionData('approve', [GEK_ROUTER, entrada])
+        });
+        transactions.push({
+          to: GEK_ROUTER,
+          data: routerIface.encodeFunctionData('comprar', [lzActual.curva, entrada, minSal])
+        });
+      }else{
+        // vender NO lleva approve: GekToken le da permiso permanente al router
+        if(entrada > lzSaldo){
+          lzEnviando = false; out.textContent = '';
+          showToast('No te alcanza el saldo', true); return;
+        }
+        transactions.push({
+          to: GEK_ROUTER,
+          data: routerIface.encodeFunctionData('vender', [lzActual.curva, entrada, minSal])
+        });
+      }
+
+      out.textContent = 'Firmá en World App…';
+      const res = await k.sendTransaction({ chainId: CHAIN_ID, transactions });
+
+      const ok = (res && res.data && res.data.status === 'success')
+        || (res && res.finalPayload && res.finalPayload.status !== 'error');
+
+      console.log('DEBUG curva res:', JSON.stringify(res));
+
+      if(ok){
+        out.textContent = '✅ ' + (esCompra ? 'Compra' : 'Venta') + ' enviada.';
+        showToast(esCompra ? 'Compra enviada ✅' : 'Venta enviada ✅');
+        inp.value = ''; qEl.textContent = ''; delete qEl.dataset.salida;
+        setTimeout(()=>{ cargarLanzados(true); loadBalances(); }, 6000);
+      }else{
+        const codigo = (res && res.finalPayload && res.finalPayload.error_code)
+          || (res && res.data && res.data.error_code) || '';
+        if(/user_rejected|user_cancelled|cancelled|rejected/i.test(codigo)){
+          out.textContent = 'Cancelaste la transacción.';
+          showToast('Cancelado');
+        }else{
+          out.textContent = 'No se pudo completar.\n' + (codigo || JSON.stringify(res));
+          showToast('No se pudo completar', true);
+        }
+      }
+    }catch(e){
+      console.error('curva', e);
+      out.textContent = 'Error: ' + (e && e.message ? e.message : e);
+      showToast('Error en la operación', true);
+    }finally{
+      lzEnviando = false;
+    }
+  }
+
+  document.getElementById('btnLzComprar').onclick = ()=> lzOperar(true);
+  document.getElementById('btnLzVender').onclick  = ()=> lzOperar(false);
 
   // ============================================================
   //  ANUNCIOS PAGOS — contrato ZorpAds, se cobra en $ZORP.
