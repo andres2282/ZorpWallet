@@ -1357,16 +1357,22 @@
     try{
       const p = await getReadProvider();
       const listEl = document.getElementById('tokenList');
-      listEl.innerHTML = `<div class="empty-state">Leyendo tus tokens (${CURATED_TOKEN_ADDRESSES.length + 2})…</div>`;
+      listEl.innerHTML = `<div class="empty-state">Leyendo tus tokens…</div>`;
 
       // lista fija: WLD, ZORP y los tokens curados que confirmaste como confiables.
       // Se lee cada uno directo de la blockchain (símbolo, nombre, decimales, saldo) —
       // si tenés saldo > 0, aparece. No depende del explorador ni de heurísticas de liquidez.
-      const candidateAddresses = [
+      // a la lista curada se suman los tokens del launchpad: si tenés saldo,
+      // tienen que verse en Inicio como cualquier otro
+      const delLaunchpad = await direccionesLanzadas();
+      const base = [
         WLD_ADDRESS.toLowerCase(),
         ZORP_TOKEN.toLowerCase(),
         ...CURATED_TOKEN_ADDRESSES.filter(a => a !== WLD_ADDRESS.toLowerCase() && a !== ZORP_TOKEN.toLowerCase())
       ];
+      const candidateAddresses = base.concat(
+        (delLaunchpad || []).filter(a => base.indexOf(a) === -1)
+      );
 
       async function readTokenInBatches(addresses, batchSize){
         const results = [];
@@ -1422,7 +1428,22 @@
         return out;
       }
 
-      const priced = await fetchPricesInBatches(withBalance, 20);
+      let priced = await fetchPricesInBatches(withBalance, 20);
+
+      // los que siguen sin precio y salieron del launchpad se valúan
+      // con el precio de su propia curva, convertido a dólares vía WLD
+      const setLaunchpad = new Set(delLaunchpad || []);
+      const sinPrecio = priced.filter(r => r.usdValue === null && setLaunchpad.has(r.address));
+      if(sinPrecio.length){
+        await Promise.all(sinPrecio.map(async (r) => {
+          const pu = await precioLanzadoUsd(r.address);
+          if(pu != null){
+            r.usdValue = parseFloat(ethers.formatUnits(r.bal, r.decimals)) * pu;
+          }
+          r.esLanzado = true;
+        }));
+      }
+      priced.forEach(r => { if(setLaunchpad.has(r.address)) r.esLanzado = true; });
 
       listEl.innerHTML = '';
       let totalUsd = 0;
@@ -1467,7 +1488,9 @@
             ${r.usdValue !== null ? `<div class="tk-usd">$${r.usdValue.toLocaleString('es',{maximumFractionDigits:2})}</div>` : ''}
           </div>`;
         const tkForDetail = { ...tk, icon: r.icon || geckoUrl || tk.icon, balance: formatted, usdValue: r.usdValue };
-        row.onclick = () => openTokenDetail(tkForDetail);
+        row.onclick = () => r.esLanzado
+          ? abrirLanzadoPorDireccion(r.address)
+          : openTokenDetail(tkForDetail);
         listEl.appendChild(row);
         anyShown = true;
 
@@ -1951,6 +1974,98 @@
     }
   };
 
+
+  // ============================================================
+  //  TOKENS DEL LAUNCHPAD EN INICIO
+  //  Los que salen de la curva no están en la lista curada ni tienen pool
+  //  en ningún DEX hasta que gradúan, así que no aparecían en "Tus tokens".
+  //  Se suman a la lectura y su valor se calcula con el precio de la curva.
+  // ============================================================
+  let lanzadosDirs   = null;    // direcciones de todos los tokens de la factory
+  let lanzadosDirsAt = 0;
+  const lanzadosCurva = {};     // token -> curva
+  const LANZADOS_A_ESCANEAR = 60;
+
+  async function direccionesLanzadas(){
+    if(lanzadosDirs && (Date.now() - lanzadosDirsAt) < 5 * 60 * 1000) return lanzadosDirs;
+    try{
+      const p = await getReadProvider();
+      const f = new ethers.Contract(GEK_FACTORY, FACTORY_LISTA_ABI, p);
+      const total = Number(await f.totalTokensCreated());
+      const n = Math.min(LANZADOS_A_ESCANEAR, total);
+      const idx = [];
+      for(let i = 0; i < n; i++) idx.push(total - 1 - i);
+      const dirs = await Promise.all(idx.map(i => f.allTokens(i).catch(()=> null)));
+      lanzadosDirs   = dirs.filter(Boolean).map(a => a.toLowerCase());
+      lanzadosDirsAt = Date.now();
+    }catch(e){
+      console.error('direccionesLanzadas', e);
+      lanzadosDirs = lanzadosDirs || [];
+    }
+    return lanzadosDirs;
+  }
+
+  let wldUsdCache = { valor: null, at: 0 };
+  async function precioWldUsd(){
+    if(wldUsdCache.valor != null && (Date.now() - wldUsdCache.at) < 3 * 60 * 1000) return wldUsdCache.valor;
+    try{
+      const r = await fetch('https://api.dexscreener.com/latest/dex/tokens/' + WLD_ADDRESS);
+      const d = await r.json();
+      const pair = (d.pairs || []).filter(p => p.chainId === 'worldchain')
+        .sort((a, b) => ((b.liquidity && b.liquidity.usd) || 0) - ((a.liquidity && a.liquidity.usd) || 0))[0];
+      if(pair && pair.priceUsd){
+        wldUsdCache = { valor: parseFloat(pair.priceUsd), at: Date.now() };
+      }
+    }catch(e){}
+    return wldUsdCache.valor;
+  }
+
+  // Precio en USD de un token que todavía vive en su curva
+  async function precioLanzadoUsd(tokenAddr){
+    try{
+      const p = await getReadProvider();
+      const f = new ethers.Contract(GEK_FACTORY, FACTORY_LISTA_ABI, p);
+      const curva = lanzadosCurva[tokenAddr] || await f.curveOf(tokenAddr);
+      if(!curva || /^0x0{40}$/i.test(curva)) return null;
+      lanzadosCurva[tokenAddr] = curva;
+
+      const c = new ethers.Contract(curva, CURVE_ABI, p);
+      const tok = new ethers.Contract(tokenAddr, ERC20_ABI, p);
+      const [vQ, vT, dec] = await Promise.all([
+        c.virtualQuoteReserve(), c.virtualTokenReserve(), tok.decimals().catch(()=> 18)
+      ]);
+      if(!vT || vT === 0n) return null;
+      const enWld = parseFloat(ethers.formatUnits(vQ, 18)) /
+                    parseFloat(ethers.formatUnits(vT, Number(dec)));
+      const usd = await precioWldUsd();
+      return usd != null ? enWld * usd : null;
+    }catch(e){ return null; }
+  }
+
+  // Abrir la ficha del Launchpad desde cualquier lugar, solo con la dirección
+  async function abrirLanzadoPorDireccion(addr){
+    try{
+      showToast('Abriendo…');
+      const p = await getReadProvider();
+      const f = new ethers.Contract(GEK_FACTORY, FACTORY_LISTA_ABI, p);
+      const curva = lanzadosCurva[addr.toLowerCase()] || await f.curveOf(addr);
+      if(!curva || /^0x0{40}$/i.test(curva)){ showToast('Ese token no salió del launchpad', true); return; }
+      const c   = new ethers.Contract(curva, CURVE_ABI, p);
+      const tok = new ethers.Contract(addr, ERC20_ABI, p);
+      const [nombre, simbolo, dec, raised, meta, grad] = await Promise.all([
+        tok.name().catch(()=> '?'), tok.symbol().catch(()=> '?'), tok.decimals().catch(()=> 18),
+        c.realQuoteRaised().catch(()=> 0n), c.graduationTarget().catch(()=> 0n),
+        c.graduated().catch(()=> false)
+      ]);
+      abrirLanzado({
+        address: addr, curva, nombre, simbolo, decimals: Number(dec),
+        raised, meta, graduado: grad,
+        icon: lzIconCache[addr.toLowerCase()] || null
+      });
+    }catch(e){
+      showToast('No se pudo abrir el token', true);
+    }
+  }
 
   // ============================================================
   //  ERRORES DE WORLD APP
