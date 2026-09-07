@@ -1457,10 +1457,17 @@
         return vb - va;
       });
 
-      // resolver todos los íconos de GeckoTerminal EN PARALELO (evita hacerlo uno por uno)
-      const geckoUrls = await Promise.all(priced.map(r =>
-        (r.icon && r.icon.startsWith('data:')) ? Promise.resolve(null) : getGeckoIcon(r.address)
-      ));
+      // resolver todos los íconos EN PARALELO (evita hacerlo uno por uno).
+      // Los del launchpad no están en GeckoTerminal: su logo vive on-chain
+      // en GekMetadataV3, que es de donde lo saca la ficha del token.
+      const geckoUrls = await Promise.all(priced.map(async (r) => {
+        if(r.icon && r.icon.startsWith('data:')) return null;
+        if(r.esLanzado){
+          const propio = await lzIcono(r.address);
+          if(propio) return propio;
+        }
+        return getGeckoIcon(r.address);
+      }));
 
       priced.forEach((r, i) => {
         const geckoUrl = geckoUrls[i];
