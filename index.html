@@ -557,7 +557,11 @@
   .crear-resumen .tot{color:var(--text); font-weight:700;}
   #crearOut, #adsOut, #lzOut{
     font-size:11.5px; line-height:1.7; color:var(--text-dim);
-    white-space:pre-wrap; word-break:break-all; margin-top:14px;
+    white-space:pre-wrap; word-break:break-word; margin-top:14px;
+  }
+  #crearOut:not(:empty), #adsOut:not(:empty), #lzOut:not(:empty){
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:12px; padding:12px 13px;
   }
 
   ::-webkit-scrollbar{display:none;}
@@ -1948,6 +1952,54 @@
 
 
   // ============================================================
+  //  ERRORES DE WORLD APP
+  //  En World App no se puede abrir la consola, así que el motivo
+  //  real tiene que quedar escrito en pantalla y no irse solo.
+  // ============================================================
+  function codigoDeRespuesta(res){
+    if(!res) return '';
+    return (res.finalPayload && (res.finalPayload.error_code || res.finalPayload.details))
+        || (res.data && res.data.error_code)
+        || res.error_code || '';
+  }
+
+  function esCancelado(codigo){
+    return /user_rejected|user_cancelled|cancelled|rejected|denied/i.test(String(codigo));
+  }
+
+  // direcciones: las que toca esta operación, para poder nombrarlas
+  function explicarErrorWorld(res, direcciones){
+    const codigo = String(codigoDeRespuesta(res) || '');
+    const crudo  = (() => { try{ return JSON.stringify(res); }catch(e){ return String(res); } })();
+    const lista  = (direcciones || []).filter(Boolean).join('\n· ');
+
+    if(/invalid_contract/i.test(codigo)){
+      return 'World App rechazó la transacción porque alguno de estos contratos ' +
+             'no está dado de alta en Contract Entrypoints de ESTA mini app:\n· ' + lista +
+             '\n\nSe agregan en Developer Portal → tu app → Advanced → Contract Entrypoints. ' +
+             'El App ID de ZorpWallet es distinto del de WorldLaunch: los permisos no se comparten.';
+    }
+    if(/simulation_failed/i.test(codigo)){
+      return 'La simulación falló: la cadena rechazaría la transacción. ' +
+             'Suele ser saldo insuficiente, deslizamiento demasiado ajustado, ' +
+             'o que la operación excede el gas del lote.\n\n' + crudo;
+    }
+    if(/gas_limit_exceeded/i.test(codigo)){
+      return 'El lote pide demasiado gas para World App. Probá con un monto menor ' +
+             'o sin la imagen si estabas creando un token.';
+    }
+    if(/invalid_operation|disallowed_operation/i.test(codigo)){
+      return 'World App no permite esta operación tal como está armada. ' +
+             'Revisá que el contrato esté en Contract Entrypoints y, si mueve tokens por ' +
+             'Permit2, que el token esté en la lista Permit2 Tokens.\n\n' + crudo;
+    }
+    if(/insufficient/i.test(codigo)){
+      return 'Saldo insuficiente para cubrir la operación.';
+    }
+    return 'No se pudo completar.\n\nRespuesta de World App:\n' + (codigo ? codigo + '\n\n' : '') + crudo;
+  }
+
+  // ============================================================
   //  TOKENS LANZADOS — lista y operativa sobre la curva enlazada.
   //  Antes de graduarse (1500 WLD) el token NO tiene pool en ningún
   //  DEX, así que no puede salir en Tendencias ni en el swap: se
@@ -2627,11 +2679,27 @@
     const cap = document.getElementById('tkChartCap');
     if(cap) cap.textContent = lzActual.simbolo + ' / WLD';
 
+    // Con menos de dos operaciones no hay recorrido que dibujar, pero sí
+    // hay un precio: se muestra plano en vez de dejar el recuadro vacío.
     if(ops.length < 2){
-      cx.fillStyle = 'rgba(255,255,255,.25)';
-      cx.font = '12px system-ui';
-      cx.textAlign = 'center';
-      cx.fillText('Sin operaciones suficientes para el gráfico', w / 2, h / 2);
+      const p = precioActual();
+      if(p != null){
+        cx.strokeStyle = 'rgba(126,224,42,.55)';
+        cx.setLineDash([5, 5]);
+        cx.lineWidth = 2;
+        cx.beginPath(); cx.moveTo(8, h / 2); cx.lineTo(w - 8, h / 2); cx.stroke();
+        cx.setLineDash([]);
+        cx.fillStyle = 'rgba(255,255,255,.45)';
+        cx.font = '11px system-ui';
+        cx.textAlign = 'center';
+        cx.fillText(precioCorto(p) + ' WLD · ' +
+          (ops.length ? 'una sola operación' : 'todavía sin operaciones'), w / 2, h / 2 - 12);
+      }else{
+        cx.fillStyle = 'rgba(255,255,255,.25)';
+        cx.font = '12px system-ui';
+        cx.textAlign = 'center';
+        cx.fillText('Todavía no hay precio para graficar', w / 2, h / 2);
+      }
       return;
     }
 
@@ -2832,13 +2900,15 @@
         setTimeout(()=>{ cargarLanzados(true); loadBalances();
                          if(lzActual) abrirLanzado(lzActual); }, 6000);
       }else{
-        const codigo = (res && res.finalPayload && res.finalPayload.error_code)
-          || (res && res.data && res.data.error_code) || '';
-        if(/user_rejected|user_cancelled|cancelled|rejected/i.test(codigo)){
+        const codigo = codigoDeRespuesta(res);
+        if(esCancelado(codigo)){
           out.textContent = 'Cancelaste la transacción.';
           showToast('Cancelado');
         }else{
-          out.textContent = 'No se pudo completar.\n' + (codigo || JSON.stringify(res));
+          out.textContent = explicarErrorWorld(res, [
+            'GekRouter  ' + GEK_ROUTER,
+            'WLD  ' + WLD_ADDRESS
+          ]);
           showToast('No se pudo completar', true);
         }
       }
@@ -3039,13 +3109,15 @@
         setTimeout(initAnuncios, 5000);
         setTimeout(loadBalances, 5000);
       }else{
-        const codigo = (res && res.finalPayload && res.finalPayload.error_code)
-          || (res && res.data && res.data.error_code) || '';
-        if(/user_rejected|user_cancelled|cancelled|rejected/i.test(codigo)){
+        const codigo = codigoDeRespuesta(res);
+        if(esCancelado(codigo)){
           out.textContent = 'Cancelaste la transacción.';
           showToast('Cancelado');
         }else{
-          out.textContent = 'No se pudo publicar.\n' + (codigo || JSON.stringify(res));
+          out.textContent = explicarErrorWorld(res, [
+            'ZorpAds  ' + ZORP_ADS,
+            'ZORP  ' + ZORP_TOKEN
+          ]);
           showToast('No se pudo publicar', true);
         }
       }
@@ -3502,13 +3574,17 @@
       console.log('DEBUG crearToken res:', JSON.stringify(res));
 
       if(!ok){
-        const codigo = (res && res.finalPayload && res.finalPayload.error_code)
-          || (res && res.data && res.data.error_code) || '';
-        if(/user_rejected|user_cancelled|cancelled|rejected/i.test(codigo)){
+        const codigo = codigoDeRespuesta(res);
+        if(esCancelado(codigo)){
           out.textContent = 'Cancelaste la transacción.';
           showToast('Cancelado');
         }else{
-          out.textContent = 'No se pudo crear el token.\n' + (codigo || JSON.stringify(res));
+          out.textContent = explicarErrorWorld(res, [
+            'GekFactory  ' + GEK_FACTORY,
+            'GekRouter  ' + GEK_ROUTER,
+            'GekLock  ' + GEK_LOCK,
+            'WLD  ' + WLD_ADDRESS
+          ]);
           showToast('No se pudo crear el token', true);
         }
         crearEnviando = false;
