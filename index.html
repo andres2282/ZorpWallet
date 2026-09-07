@@ -717,6 +717,7 @@
       <div class="crear-head">
         <button class="back-btn" onclick="goTab('lanzados')">←</button>
         <div class="lz-sub" style="font-size:10px; letter-spacing:1.2px; text-transform:uppercase;">Mercado</div>
+        <button class="trend-refresh" style="margin-left:auto;" onclick="refrescarFicha()">↻ Actualizar</button>
       </div>
 
       <div class="card tk-id" id="tkId"></div>
@@ -2330,16 +2331,17 @@
 
     pintarFicha();
 
-    const [datos] = await Promise.all([
-      leerFichaLanzado(t),
-      cargarOperaciones(t)
-    ]);
+    // primero la cadena: la reconstrucción del precio necesita la reserva actual
+    const datos = await leerFichaLanzado(t);
     if(lzActual !== t) return;             // el usuario ya se fue a otro token
-
     tkDatos = datos;
     if(datos && datos.saldo != null) lzSaldo = datos.saldo;
-
     pintarFicha();
+
+    await cargarOperaciones(t);
+    if(lzActual !== t) return;
+    pintarFicha();
+
     cargarHolders(t);
   }
 
@@ -2362,70 +2364,108 @@
     }
   }
 
+  function refrescarFicha(){
+    if(lzActual) abrirLanzado(lzActual);
+  }
+
+  // El explorador tarda unos bloques en indexar. En vez de un solo intento
+  // a los 6 s, se reintenta escalonado: si el primero llega vacío, el
+  // siguiente suele traerlo ya.
+  function refrescarTrasOperar(){
+    [8000, 20000, 45000].forEach(ms => setTimeout(() => {
+      if(lzActual) abrirLanzado(lzActual);
+    }, ms));
+  }
+
   // ---------- datos del explorador ----------
   //  Todas las transferencias que tocan la curva. Cada operación deja
   //  DOS en la misma transacción: el WLD que entra o sale, y el token
   //  que va al revés. Agrupando por hash sale el precio exacto de cada
   //  compra y venta, sin barrer eventos con eth_getLogs.
+  // Las operaciones salen de las transferencias DEL TOKEN, no de las de la
+  // curva: /tokens/{addr}/transfers es el mismo endpoint que ya funciona
+  // para poseedores. Si el token sale de la curva es una compra; si entra,
+  // una venta. Así no dependemos del listado por dirección, que devolvía
+  // datos con otra forma y dejaba la pestaña vacía sin avisar.
   async function cargarOperaciones(t){
-    try{
-      const urls = [
-        TK_EXPLORER + '/addresses/' + t.curva + '/token-transfers?type=ERC-20',
-        TK_EXPLORER + '/addresses/' + t.curva + '/token-transfers',
-        TK_EXPLORER + '/addresses/' + t.curva + '/transactions'
-      ];
-      let items = null, ultimo = '';
-      for(const u of urls){
-        try{
-          const r = await fetch(u);
-          if(!r.ok){ ultimo = 'HTTP ' + r.status; continue; }
-          const d = await r.json();
-          if(Array.isArray(d.items)){ items = d.items; break; }
-        }catch(e){ ultimo = (e && e.message) ? e.message : String(e); }
-      }
-      if(!items){
-        tkErrores.push('operaciones: ' + (ultimo || 'el explorador no devolvió datos'));
-        tkOps = [];
-        return;
-      }
-      const wld = WLD_ADDRESS.toLowerCase();
-      const curva = t.curva.toLowerCase();
-      const porTx = {};
-
-      items.forEach(it => {
-        const tokenAddr = ((it.token && it.token.address) || '').toLowerCase();
-        const de   = ((it.from && it.from.hash) || '').toLowerCase();
-        const a    = ((it.to   && it.to.hash)   || '').toLowerCase();
-        const val  = it.total && it.total.value;
-        const dec  = Number((it.total && it.total.decimals) || 18);
-        if(val == null) return;
-        const monto = parseFloat(ethers.formatUnits(BigInt(val), dec));
-        const h = it.transaction_hash || it.tx_hash;
-        if(!h) return;
-        porTx[h] = porTx[h] || { hash: h, ts: it.timestamp ? Date.parse(it.timestamp) : null };
-        const o = porTx[h];
-        if(tokenAddr === wld){
-          o.wld = monto;
-          o.wldHaciaCurva = (a === curva);
-          o.wallet = (a === curva) ? de : a;
-        }else if(tokenAddr === (t.address || '').toLowerCase()){
-          o.tokens = monto;
+    const urls = [
+      TK_EXPLORER + '/tokens/' + t.address + '/transfers',
+      TK_EXPLORER + '/addresses/' + t.curva + '/token-transfers?type=ERC-20'
+    ];
+    let items = null, ultimo = '';
+    for(const u of urls){
+      try{
+        const r = await fetch(u);
+        if(!r.ok){ ultimo = 'HTTP ' + r.status; continue; }
+        const d = await r.json();
+        // solo sirve si de verdad son transferencias: si no, seguimos probando
+        if(Array.isArray(d.items) && (!d.items.length || d.items[0].total)){
+          items = d.items; break;
         }
-      });
-
-      tkOps = Object.values(porTx)
-        .filter(o => o.wld > 0 && o.tokens > 0 && o.ts)
-        .map(o => ({
-          hash: o.hash, ts: o.ts, wallet: o.wallet || '',
-          tipo: o.wldHaciaCurva ? 'compra' : 'venta',
-          wld: o.wld, tokens: o.tokens, precio: o.wld / o.tokens
-        }))
-        .sort((a, b) => a.ts - b.ts);
-    }catch(e){
-      console.error('operaciones', e);
-      tkErrores.push('operaciones: ' + (e && e.message ? e.message : e));
-      tkOps = [];
+        ultimo = 'el explorador devolvió otra cosa';
+      }catch(e){ ultimo = (e && e.message) ? e.message : String(e); }
     }
+    if(items === null){
+      tkErrores.push('operaciones: ' + (ultimo || 'sin respuesta'));
+      tkOps = [];
+      return;
+    }
+
+    const curva     = (t.curva   || '').toLowerCase();
+    const tokenAddr = (t.address || '').toLowerCase();
+    const brutos = [];
+
+    items.forEach(it => {
+      const ta = ((it.token && it.token.address) || '').toLowerCase();
+      if(ta && ta !== tokenAddr) return;
+      const de  = ((it.from && it.from.hash) || '').toLowerCase();
+      const a   = ((it.to   && it.to.hash)   || '').toLowerCase();
+      const val = it.total && it.total.value;
+      if(val == null) return;
+      const dec  = Number((it.total && it.total.decimals) != null ? it.total.decimals : t.decimals);
+      let cant;
+      try{ cant = parseFloat(ethers.formatUnits(BigInt(val), dec)); }catch(e){ return; }
+      if(!(cant > 0)) return;
+      const ts = it.timestamp ? Date.parse(it.timestamp) : null;
+      if(!ts) return;
+      const hash = it.transaction_hash || it.tx_hash || '';
+      if(de === curva)      brutos.push({ hash, ts, tipo: 'compra', wallet: a,  tokens: cant });
+      else if(a === curva)  brutos.push({ hash, ts, tipo: 'venta',  wallet: de, tokens: cant });
+    });
+
+    brutos.sort((x, y) => x.ts - y.ts);
+
+    // Precio de la CURVA, no precio medio de cada operación.
+    // Como la curva mantiene Q×T constante, P = k/T². Se sigue la reserva de
+    // tokens hacia atrás desde la actual (comprar la baja, vender la sube) y
+    // P_i = P_ahora × (T_ahora / T_i)². Así toda compra SUBE y toda venta BAJA,
+    // en vez de los dientes de sierra que da el precio medio con comisiones.
+    const pAhora = precioActual();
+    const Tahora = (tkDatos && tkDatos.vT != null)
+      ? parseFloat(ethers.formatUnits(tkDatos.vT, t.decimals)) : null;
+
+    if(pAhora == null || !Tahora || !brutos.length){
+      tkOps = brutos.map(o => Object.assign({}, o, { precio: null, wld: 0 }));
+      return;
+    }
+
+    const reservaTras = new Array(brutos.length);
+    let despues = Tahora;
+    for(let i = brutos.length - 1; i >= 0; i--){
+      reservaTras[i] = despues;
+      despues = brutos[i].tipo === 'compra'
+        ? despues + brutos[i].tokens      // la compra sacó tokens de la curva
+        : despues - brutos[i].tokens;     // la venta se los devolvió
+    }
+
+    tkOps = brutos.map((o, i) => {
+      const T = reservaTras[i];
+      const precio = (T > 0) ? pAhora * Math.pow(Tahora / T, 2) : null;
+      return Object.assign({}, o, {
+        precio: precio,
+        wld: precio != null ? o.tokens * precio : 0   // volumen aproximado
+      });
+    });
   }
 
   async function cargarHolders(t){
@@ -2445,6 +2485,10 @@
     if(!tkRango) return tkOps;
     const desde = Date.now() - tkRango * 3600 * 1000;
     return tkOps.filter(o => o.ts >= desde);
+  }
+
+  function opsGraficables(){
+    return opsEnRango().filter(o => o.precio != null && isFinite(o.precio) && o.precio > 0);
   }
 
   // ---------- bloques de la pantalla ----------
@@ -2474,7 +2518,7 @@
   function renderTkPrecio(){
     const t = lzActual; if(!t) return;
     const p = precioActual();
-    const ops = opsEnRango();
+    const ops = opsGraficables();
 
     let chg = null;
     if(ops.length >= 2 && p != null){
@@ -2675,7 +2719,7 @@
     cx.setTransform(dpr, 0, 0, dpr, 0, 0);
     cx.clearRect(0, 0, w, h);
 
-    const ops = opsEnRango();
+    const ops = opsGraficables();
     const cap = document.getElementById('tkChartCap');
     if(cap) cap.textContent = lzActual.simbolo + ' / WLD';
 
@@ -2897,8 +2941,8 @@
         showToast(esCompra ? 'Compra enviada ✅' : 'Venta enviada ✅');
         inp.value = ''; qEl.textContent = ''; delete qEl.dataset.salida;
         cerrarHoja();
-        setTimeout(()=>{ cargarLanzados(true); loadBalances();
-                         if(lzActual) abrirLanzado(lzActual); }, 6000);
+        setTimeout(()=>{ cargarLanzados(true); loadBalances(); }, 6000);
+        refrescarTrasOperar();
       }else{
         const codigo = codigoDeRespuesta(res);
         if(esCancelado(codigo)){
