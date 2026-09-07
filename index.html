@@ -746,6 +746,10 @@
 
       <div class="card" id="tkPane"></div>
 
+      <div id="tkFallos" style="display:none; font-size:10.5px; line-height:1.6; color:var(--red);
+           background:rgba(255,77,77,.08); border:1px solid rgba(255,77,77,.3);
+           border-radius:11px; padding:10px 12px; margin-top:14px; word-break:break-word;"></div>
+
       <div id="lzOut"></div>
     </section>
 
@@ -2153,10 +2157,96 @@
   let tkDatos     = null;
   let tkHojaLado  = 'compra';
 
+  // Precio con subíndice para los ceros: 0.0₆9898
+  function precioCorto(n){
+    if(!isFinite(n) || n <= 0) return '0';
+    if(n >= 0.001) return n.toLocaleString('es', { maximumFractionDigits: 6 });
+    const s = n.toFixed(20);
+    const m = s.match(/^0\.(0+)(\d+)/);
+    if(!m) return n.toExponential(2);
+    const sub = String(m[1].length).split('')
+      .map(d => '₀₁₂₃₄₅₆₇₈₉'[Number(d)]).join('');
+    return '0.0' + sub + m[2].slice(0, 4);
+  }
+
+  function fmtGrande(n){
+    if(n == null || !isFinite(n)) return '—';
+    if(n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+    if(n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+    if(n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+    return trimNum(n);
+  }
+
+  // Envoltorio para que NINGUNA lectura suelta pueda cortar la pantalla:
+  // atrapa también los errores sincrónicos (una dirección mal formada, por
+  // ejemplo, revienta antes de devolver la promesa y se saltea el .catch).
+  let tkErrores = [];
+  async function leer(etiqueta, fn, porDefecto){
+    try{ return await fn(); }
+    catch(e){
+      tkErrores.push(etiqueta + ': ' + (e && e.message ? e.message : e));
+      return porDefecto;
+    }
+  }
+
+  // Cantidad de poseedores: el explorador lo tiene contado, sale mucho
+  // más barato que barrer los eventos Transfer con eth_getLogs.
+  async function leerHolders(addr){
+    const intentos = [
+      TK_EXPLORER + '/tokens/' + addr,
+      EXPLORER_API + '?module=token&action=getToken&contractaddress=' + addr
+    ];
+    for(const u of intentos){
+      try{
+        const r = await fetch(u);
+        if(!r.ok) continue;
+        const d = await r.json();
+        const v = d.holders ?? d.holders_count ?? (d.result && d.result.holders);
+        if(v != null && !isNaN(Number(v))) return Number(v);
+      }catch(e){}
+    }
+    tkErrores.push('poseedores: el explorador no respondió');
+    return null;
+  }
+
+  async function leerFichaLanzado(t){
+    const p = await leer('rpc', () => getReadProvider(), null);
+    if(!p){ return null; }
+
+    let c, tok, fac;
+    try{
+      c   = new ethers.Contract(t.curva,   CURVE_ABI, p);
+      tok = new ethers.Contract(t.address, ERC20_ABI.concat(ERC20_SUPPLY_ABI), p);
+      fac = new ethers.Contract(GEK_FACTORY, FACTORY_FEE_ABI, p);
+    }catch(e){
+      tkErrores.push('contratos: ' + (e && e.message ? e.message : e));
+      return null;
+    }
+
+    const [creador, vQ, vT, supply, enCurva, quemado, saldo, feeBps, holders] = await Promise.all([
+      leer('creator',             () => c.creator(),                null),
+      leer('virtualQuoteReserve', () => c.virtualQuoteReserve(),    null),
+      leer('virtualTokenReserve', () => c.virtualTokenReserve(),    null),
+      leer('totalSupply',         () => tok.totalSupply(),          null),
+      leer('saldo curva',         () => tok.balanceOf(t.curva),     null),
+      leer('quemado',             () => tok.balanceOf(DIR_MUERTA),  0n),
+      userAddress ? leer('tu saldo', () => tok.balanceOf(userAddress), null) : Promise.resolve(null),
+      leer('creatorFeeBps',       () => fac.creatorFeeBpsOf(t.address), null),
+      leerHolders(t.address)
+    ]);
+
+    let sueltoCreador = null;
+    if(creador){
+      sueltoCreador = await leer('saldo creador', () => tok.balanceOf(creador), null);
+    }
+
+    return { creador, vQ, vT, supply, enCurva, quemado, saldo, feeBps, holders, sueltoCreador };
+  }
+
   async function abrirLanzado(t){
     lzActual = t;
     lzSaldo  = 0n;
-    tkOps = []; tkHolders = []; tkDatos = null; tkPane = 'stats';
+    tkOps = []; tkHolders = []; tkDatos = null; tkPane = 'stats'; tkErrores = [];
     goTab('lanzado');
 
     ['lzMontoCompra','lzMontoVenta'].forEach(id => { document.getElementById(id).value = ''; });
@@ -2186,8 +2276,7 @@
       window.addEventListener('resize', ()=>{ if(lzActual) dibujarTkChart(); });
     }
 
-    renderTkId(); renderTkPrecio(); renderTkCards(); renderTkGrad(); renderTkPane();
-    dibujarTkChart();
+    pintarFicha();
 
     const [datos] = await Promise.all([
       leerFichaLanzado(t),
@@ -2198,10 +2287,27 @@
     tkDatos = datos;
     if(datos && datos.saldo != null) lzSaldo = datos.saldo;
 
-    renderTkId(); renderTkPrecio(); renderTkCards(); renderTkGrad(); renderTkPane();
-    dibujarTkChart();
-
+    pintarFicha();
     cargarHolders(t);
+  }
+
+  // Cada bloque por separado: si uno falla, los demás igual se dibujan
+  // y el motivo queda a la vista, que en World App no hay consola.
+  function pintarFicha(){
+    [['tkId', renderTkId], ['tkPrecio', renderTkPrecio], ['tkCards3', renderTkCards],
+     ['tkGrad', renderTkGrad], ['tkPane', renderTkPane], ['tkChart', dibujarTkChart]
+    ].forEach(([id, fn]) => {
+      try{ fn(); }
+      catch(e){
+        tkErrores.push(id + ': ' + (e && e.message ? e.message : e));
+        console.error('ficha ' + id, e);
+      }
+    });
+    const box = document.getElementById('tkFallos');
+    if(box){
+      box.style.display = tkErrores.length ? 'block' : 'none';
+      box.textContent = tkErrores.length ? 'No se pudo leer: ' + tkErrores.join(' · ') : '';
+    }
   }
 
   // ---------- datos del explorador ----------
@@ -2211,10 +2317,25 @@
   //  compra y venta, sin barrer eventos con eth_getLogs.
   async function cargarOperaciones(t){
     try{
-      const r = await fetch(TK_EXPLORER + '/addresses/' + t.curva + '/token-transfers?type=ERC-20');
-      if(!r.ok) throw new Error('HTTP ' + r.status);
-      const d = await r.json();
-      const items = d.items || [];
+      const urls = [
+        TK_EXPLORER + '/addresses/' + t.curva + '/token-transfers?type=ERC-20',
+        TK_EXPLORER + '/addresses/' + t.curva + '/token-transfers',
+        TK_EXPLORER + '/addresses/' + t.curva + '/transactions'
+      ];
+      let items = null, ultimo = '';
+      for(const u of urls){
+        try{
+          const r = await fetch(u);
+          if(!r.ok){ ultimo = 'HTTP ' + r.status; continue; }
+          const d = await r.json();
+          if(Array.isArray(d.items)){ items = d.items; break; }
+        }catch(e){ ultimo = (e && e.message) ? e.message : String(e); }
+      }
+      if(!items){
+        tkErrores.push('operaciones: ' + (ultimo || 'el explorador no devolvió datos'));
+        tkOps = [];
+        return;
+      }
       const wld = WLD_ADDRESS.toLowerCase();
       const curva = t.curva.toLowerCase();
       const porTx = {};
@@ -2250,6 +2371,7 @@
         .sort((a, b) => a.ts - b.ts);
     }catch(e){
       console.error('operaciones', e);
+      tkErrores.push('operaciones: ' + (e && e.message ? e.message : e));
       tkOps = [];
     }
   }
