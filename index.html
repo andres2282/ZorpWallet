@@ -282,6 +282,37 @@
     background:var(--zorp-dim); color:#0e1f06; font-size:12px; font-weight:700; padding:8px 14px; border-radius:10px; border:none;
   }
 
+  /* ---- Ficha de token ---- */
+  .st-grid{
+    display:grid; grid-template-columns:1fr 1fr; gap:1px;
+    background:var(--border); border:1px solid var(--border);
+    border-radius:12px; overflow:hidden; margin-top:13px;
+  }
+  .st-cell{background:var(--panel); padding:11px 12px;}
+  .st-cell.ancho{grid-column:1 / -1;}
+  .st-k{font-size:9.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.5px;}
+  .st-v{font-size:14px; font-weight:700; color:var(--text); margin-top:4px; word-break:break-word;}
+  .st-v small{font-size:10.5px; font-weight:600; color:var(--text-faint); margin-left:3px;}
+  .st-v.verde{color:var(--zorp);}
+  .st-v.rojo{color:var(--red);}
+  .st-v.ambar{color:#e8b23a;}
+  .riesgo{
+    display:flex; align-items:center; gap:8px; margin-top:13px; padding:10px 12px;
+    border-radius:11px; font-size:11.5px; line-height:1.45;
+    border:1px solid var(--border); background:var(--panel-2); color:var(--text-dim);
+  }
+  .riesgo .punto{width:9px; height:9px; border-radius:50%; flex-shrink:0;}
+  .riesgo.ok    .punto{background:var(--zorp);}
+  .riesgo.medio .punto{background:#e8b23a;}
+  .riesgo.mal   .punto{background:var(--red);}
+  .lz-cabtop{display:flex; align-items:center; gap:12px;}
+  .lz-cabtop img{width:56px; height:56px; border-radius:15px; object-fit:cover; flex-shrink:0;}
+  .lz-redes{display:flex; gap:7px; margin-top:10px; flex-wrap:wrap;}
+  .lz-red{
+    background:var(--panel-2); border:1px solid var(--border); border-radius:9px;
+    padding:5px 10px; font-size:11px; font-weight:700; color:var(--zorp);
+  }
+
   /* ---- Tokens lanzados ---- */
   .link-btn{
     display:block; width:100%; background:none; border:none; padding:9px 0 2px;
@@ -359,6 +390,20 @@
   }
   .launch-btn:active{transform:scale(.98);}
   .launch-btn img{width:26px; height:26px; object-fit:contain;}
+
+  .logo-fila{display:flex; align-items:center; gap:14px;}
+  .logo-prev{
+    width:64px; height:64px; border-radius:16px; flex-shrink:0;
+    background:var(--panel-2); border:1px dashed var(--border);
+    display:flex; align-items:center; justify-content:center;
+    font-size:10px; color:var(--text-faint); text-align:center; overflow:hidden;
+  }
+  .logo-prev img{width:100%; height:100%; object-fit:cover;}
+  .logo-btn{
+    background:var(--panel-2); border:1px solid var(--border); border-radius:11px;
+    padding:10px 14px; font-size:12.5px; font-weight:700; color:var(--text);
+  }
+  .logo-info{font-size:10.5px; color:var(--text-faint); margin-top:6px;}
 
   .crear-head{display:flex; align-items:center; gap:10px; margin-bottom:14px;}
   .back-btn{
@@ -462,7 +507,29 @@
         <input class="field" id="crearNombre" maxlength="32" placeholder="Mi Token" style="margin-bottom:14px;">
 
         <div class="field-label">Símbolo</div>
-        <input class="field" id="crearSimbolo" maxlength="11" placeholder="MIT" style="margin-bottom:14px; text-transform:uppercase;">
+        <input class="field" id="crearSimbolo" maxlength="11" placeholder="MIT" style="margin-bottom:18px; text-transform:uppercase;">
+
+        <div class="field-label">Logo</div>
+        <div class="logo-fila">
+          <div class="logo-prev" id="crearLogoPrev">sin<br>logo</div>
+          <div style="flex:1;">
+            <button class="logo-btn" onclick="document.getElementById('crearLogo').click()">Elegir imagen</button>
+            <input type="file" id="crearLogo" accept="image/*" style="display:none;">
+            <div class="logo-info" id="crearLogoInfo">Se achica a 128 px para que entre en la cadena.</div>
+          </div>
+        </div>
+
+        <div class="field-label" style="margin-top:18px;">Descripción</div>
+        <input class="field" id="crearDesc" maxlength="180" placeholder="De qué se trata tu token" style="margin-bottom:14px;">
+
+        <div class="field-label">Telegram (opcional)</div>
+        <input class="field" id="crearTg" maxlength="120" placeholder="https://t.me/…" style="margin-bottom:14px;">
+
+        <div class="field-label">X (opcional)</div>
+        <input class="field" id="crearX" maxlength="120" placeholder="https://x.com/…" style="margin-bottom:14px;">
+
+        <div class="field-label">Web (opcional)</div>
+        <input class="field" id="crearWeb" maxlength="120" placeholder="https://…" style="margin-bottom:18px;">
 
         <div class="field-label">Tu comisión como creador</div>
         <div class="opt-row" id="crearFeeRow">
@@ -1710,7 +1777,13 @@
     'function curveOf(address) view returns (address)'
   ];
 
+  const ERC20_SUPPLY_ABI = ['function totalSupply() view returns (uint256)'];
+  const FACTORY_FEE_ABI  = ['function creatorFeeBpsOf(address) view returns (uint16)'];
+  const DIR_MUERTA = '0x000000000000000000000000000000000000dEaD';
+
   const CURVE_ABI = [
+    'function virtualQuoteReserve() view returns (uint256)',
+    'function virtualTokenReserve() view returns (uint256)',
     'function quoteBuy(uint256) view returns (uint256, uint256, uint256)',
     'function quoteSell(uint256) view returns (uint256, uint256, uint256)',
     'function realQuoteRaised() view returns (uint256)',
@@ -1735,6 +1808,22 @@
     'function hasImage(address) view returns (bool)'
   ];
   const lzIconCache = {};   // address -> data URL, o null si no hay
+  const lzTextoCache = {};  // address -> { desc, links }
+
+  // La descripción puede venir como texto plano o como el JSON
+  // { d: "...", links: { telegram, x, web } } que arma el creador.
+  function leerDescripcion(s){
+    if(!s || typeof s !== 'string') return null;
+    const t = s.trim();
+    if(!t) return null;
+    if(t[0] === '{'){
+      try{
+        const o = JSON.parse(t);
+        return { desc: o.d || o.desc || '', links: o.links || {} };
+      }catch(e){}
+    }
+    return { desc: t, links: {} };
+  }
 
   function bytesAImagen(bytes){
     if(!bytes || bytes.length < 8) return null;
@@ -1762,6 +1851,7 @@
       try{ hay = await m.hasImage(addr); }catch(e){}
       if(!hay) return null;
       const r = await m.getMetadata(addr);
+      lzTextoCache[k] = leerDescripcion(r[0]) || leerDescripcion(r[1]);
       const img = bytesAImagen(r[2]);
       lzIconCache[k] = img;
       return img;
@@ -1774,6 +1864,8 @@
   async function lzCargarIconos(){
     await Promise.all(lanzados.map(async (t) => {
       const img = await lzIcono(t.address);
+      const txt = lzTextoCache[t.address.toLowerCase()];
+      if(txt){ t.desc = txt.desc; t.links = txt.links; }
       if(!img) return;
       t.icon = img;
       document.querySelectorAll('[data-lz="' + t.address.toLowerCase() + '"]').forEach(el => {
@@ -1891,37 +1983,184 @@
       document.getElementById('lzMontoVenta').addEventListener('input',  ()=> lzPedirQuote('venta'));
     }
 
-    const meta = t.meta > 0n ? parseFloat(ethers.formatUnits(t.meta, 18)) : 0;
-    const rec  = parseFloat(ethers.formatUnits(t.raised, 18));
-    const pct  = meta > 0 ? Math.min(100, (rec / meta) * 100) : 0;
-
-    document.getElementById('lzCabecera').innerHTML =
-      (t.icon ? '<img src="' + t.icon + '" alt="" style="width:56px; height:56px; ' +
-                'border-radius:14px; object-fit:cover; margin-bottom:10px;">' : '') +
-      '<div class="lz-nom" style="font-size:17px;">' + esc(t.nombre) + '</div>' +
-      '<div class="lz-sub" style="font-size:12px;">' + esc(t.simbolo) + '</div>' +
-      '<div class="lz-sub" style="margin-top:10px;">Avance a la graduación: <b style="color:var(--text);">' +
-        trimNum(rec) + ' / ' + trimNum(meta) + ' WLD</b> (' + pct.toFixed(1) + '%)</div>' +
-      '<div class="lz-barra" style="height:5px;"><i style="width:' + pct + '%"></i></div>' +
-      '<div class="lz-dir" onclick="copiarTexto(\'' + esc(t.address) + '\')">' +
-        esc(shortAddr(t.address)) + ' · copiar</div>' +
-      (t.graduado
-        ? '<div class="lz-sub" style="margin-top:10px; color:var(--zorp);">Ya se graduó: ahora tiene pool en Uniswap. ' +
-          'Conviene operarlo desde la pantalla de Swap.</div>'
-        : '');
+    renderFichaLanzado(t, null);
 
     // si ya se graduó, la curva queda cerrada
     document.getElementById('lzComprarCard').style.display = t.graduado ? 'none' : 'block';
     document.getElementById('lzVenderCard').style.display  = t.graduado ? 'none' : 'block';
 
-    // saldo del usuario en ese token
-    try{
-      const p = await getReadProvider();
-      const c = new ethers.Contract(t.address, ERC20_ABI, p);
-      lzSaldo = await c.balanceOf(userAddress);
+    const datos = await leerFichaLanzado(t);
+    if(lzActual !== t) return;              // el usuario ya se fue a otro token
+    renderFichaLanzado(t, datos);
+
+    if(datos && datos.saldo != null){
+      lzSaldo = datos.saldo;
       document.getElementById('lzQuoteVenta').textContent =
         'Tenés ' + trimNum(ethers.formatUnits(lzSaldo, t.decimals)) + ' ' + t.simbolo;
-    }catch(e){}
+    }
+  }
+
+  // Precio con subíndice para los ceros: 0.0₆9898
+  function precioCorto(n){
+    if(!isFinite(n) || n <= 0) return '0';
+    if(n >= 0.001) return n.toLocaleString('es', { maximumFractionDigits: 6 });
+    const s = n.toFixed(20);
+    const m = s.match(/^0\.(0+)(\d+)/);
+    if(!m) return n.toExponential(2);
+    const sub = String(m[1].length).split('')
+      .map(d => '₀₁₂₃₄₅₆₇₈₉'[Number(d)]).join('');
+    return '0.0' + sub + m[2].slice(0, 4);
+  }
+
+  function fmtGrande(n){
+    if(n == null || !isFinite(n)) return '—';
+    if(n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+    if(n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+    if(n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+    return trimNum(n);
+  }
+
+  // Cantidad de poseedores: el explorador lo tiene contado, sale mucho
+  // más barato que barrer los eventos Transfer con eth_getLogs.
+  async function leerHolders(addr){
+    const intentos = [
+      EXPLORER_API.replace(/\/api$/, '') + '/api/v2/tokens/' + addr,
+      EXPLORER_API + '?module=token&action=getToken&contractaddress=' + addr
+    ];
+    for(const u of intentos){
+      try{
+        const r = await fetch(u);
+        if(!r.ok) continue;
+        const d = await r.json();
+        const v = d.holders ?? d.holders_count ?? (d.result && d.result.holders);
+        if(v != null && !isNaN(Number(v))) return Number(v);
+      }catch(e){}
+    }
+    return null;
+  }
+
+  async function leerFichaLanzado(t){
+    try{
+      const p = await getReadProvider();
+      const c   = new ethers.Contract(t.curva,   CURVE_ABI, p);
+      const tok = new ethers.Contract(t.address, ERC20_ABI.concat(ERC20_SUPPLY_ABI), p);
+      const fac = new ethers.Contract(GEK_FACTORY, FACTORY_FEE_ABI, p);
+
+      const [creador, vQ, vT, supply, enCurva, quemado, saldo, feeBps, holders] = await Promise.all([
+        c.creator().catch(()=> null),
+        c.virtualQuoteReserve().catch(()=> null),
+        c.virtualTokenReserve().catch(()=> null),
+        tok.totalSupply().catch(()=> null),
+        tok.balanceOf(t.curva).catch(()=> null),
+        tok.balanceOf(DIR_MUERTA).catch(()=> 0n),
+        userAddress ? tok.balanceOf(userAddress).catch(()=> null) : Promise.resolve(null),
+        fac.creatorFeeBpsOf(t.address).catch(()=> null),
+        leerHolders(t.address)
+      ]);
+
+      let sueltoCreador = null;
+      if(creador){
+        try{ sueltoCreador = await tok.balanceOf(creador); }catch(e){}
+      }
+
+      return { creador, vQ, vT, supply, enCurva, quemado, saldo, feeBps, holders, sueltoCreador };
+    }catch(e){
+      console.error('ficha', e);
+      return null;
+    }
+  }
+
+  function renderFichaLanzado(t, d){
+    const dec  = t.decimals;
+    const meta = t.meta > 0n ? parseFloat(ethers.formatUnits(t.meta, 18)) : 0;
+    const rec  = parseFloat(ethers.formatUnits(t.raised, 18));
+    const pct  = meta > 0 ? Math.min(100, (rec / meta) * 100) : 0;
+    const falta = Math.max(0, meta - rec);
+
+    let precio = null, mcap = null, supply = null, circul = null, quemado = null, pctCreador = null;
+    if(d){
+      if(d.vQ != null && d.vT != null && d.vT > 0n){
+        precio = parseFloat(ethers.formatUnits(d.vQ, 18)) / parseFloat(ethers.formatUnits(d.vT, dec));
+      }
+      if(d.supply != null){
+        supply = parseFloat(ethers.formatUnits(d.supply, dec));
+        if(precio != null) mcap = precio * supply;
+        if(d.enCurva != null){
+          const enC = parseFloat(ethers.formatUnits(d.enCurva, dec));
+          const q   = parseFloat(ethers.formatUnits(d.quemado || 0n, dec));
+          circul = Math.max(0, supply - enC - q);
+          quemado = q;
+        }
+        if(d.sueltoCreador != null && supply > 0){
+          pctCreador = (parseFloat(ethers.formatUnits(d.sueltoCreador, dec)) / supply) * 100;
+        }
+      }
+    }
+
+    const cargando = '<span style="color:var(--text-faint); font-weight:600;">…</span>';
+    const cel = (k, v, cls) =>
+      '<div class="st-cell' + (cls && cls.indexOf('ancho') >= 0 ? ' ancho' : '') + '">' +
+        '<div class="st-k">' + k + '</div>' +
+        '<div class="st-v' + (cls ? ' ' + cls.replace('ancho','').trim() : '') + '">' + v + '</div>' +
+      '</div>';
+
+    let riesgo = '';
+    if(pctCreador != null){
+      const cls = pctCreador < 0.01 ? 'ok' : (pctCreador < 5 ? 'medio' : 'mal');
+      const txt = pctCreador < 0.01
+        ? 'El creador no tiene tokens sueltos. Todo lo suyo está en custodia o ya no lo tiene.'
+        : 'El creador tiene ' + pctCreador.toFixed(2) + '% del suministro suelto, listo para vender en cualquier momento.';
+      riesgo = '<div class="riesgo ' + cls + '"><span class="punto"></span><span>' + txt + '</span></div>';
+    }
+
+    let redes = '';
+    if(t.links){
+      if(t.links.telegram) redes += '<a class="lz-red" href="' + esc(t.links.telegram) + '" target="_blank">Telegram</a>';
+      if(t.links.x)        redes += '<a class="lz-red" href="' + esc(t.links.x) + '" target="_blank">X</a>';
+      if(t.links.web)      redes += '<a class="lz-red" href="' + esc(t.links.web) + '" target="_blank">Web</a>';
+      if(redes) redes = '<div class="lz-redes">' + redes + '</div>';
+    }
+
+    document.getElementById('lzCabecera').innerHTML =
+      '<div class="lz-cabtop">' +
+        (t.icon ? '<img src="' + t.icon + '" alt="">' : '') +
+        '<div style="min-width:0;">' +
+          '<div class="lz-nom" style="font-size:17px;">' + esc(t.nombre) + '</div>' +
+          '<div class="lz-sub" style="font-size:12px;">' + esc(t.simbolo) +
+            (t.graduado ? ' · <span style="color:var(--zorp);">graduado</span>' : '') + '</div>' +
+        '</div>' +
+      '</div>' +
+      (t.desc ? '<div class="lz-sub" style="margin-top:10px; line-height:1.5;">' + esc(t.desc) + '</div>' : '') +
+      redes +
+      '<div class="lz-sub" style="margin-top:13px;">Avance a la graduación: ' +
+        '<b style="color:var(--text);">' + trimNum(rec) + ' / ' + trimNum(meta) + ' WLD</b> (' + pct.toFixed(1) + '%)</div>' +
+      '<div class="lz-barra" style="height:6px;"><i style="width:' + pct + '%"></i></div>' +
+
+      '<div class="st-grid">' +
+        cel('Precio', precio != null ? precioCorto(precio) + '<small>WLD</small>' : cargando) +
+        cel('Capitalización', mcap != null ? fmtGrande(mcap) + '<small>WLD</small>' : cargando) +
+        cel('Recaudado', trimNum(rec) + '<small>WLD</small>') +
+        cel('Falta para graduar', trimNum(falta) + '<small>WLD</small>', t.graduado ? 'verde' : '') +
+        cel('Poseedores', d ? (d.holders != null ? String(d.holders) : '—') : cargando) +
+        cel('Comisión del creador', d && d.feeBps != null ? (Number(d.feeBps) / 100) + '%' : cargando) +
+        cel('En circulación', circul != null ? fmtGrande(circul) : cargando) +
+        cel('Suministro', supply != null ? fmtGrande(supply) : cargando) +
+        (quemado ? cel('Quemado', fmtGrande(quemado), 'rojo') : '') +
+        cel('Creador', d && d.creador
+              ? esc(shortAddr(d.creador)) +
+                (userAddress && d.creador.toLowerCase() === userAddress.toLowerCase()
+                  ? '<small>sos vos</small>' : '')
+              : cargando, 'ancho') +
+      '</div>' +
+
+      riesgo +
+
+      '<div class="lz-dir" onclick="copiarTexto(\'' + esc(t.address) + '\')">' +
+        esc(shortAddr(t.address)) + ' · copiar contrato</div>' +
+      (t.graduado
+        ? '<div class="lz-sub" style="margin-top:10px; color:var(--zorp);">Ya se graduó: ahora tiene pool en Uniswap. ' +
+          'Conviene operarlo desde la pantalla de Swap.</div>'
+        : '');
   }
 
   function lzMax(lado){
@@ -2449,6 +2688,85 @@
   const MAX_COMPRA_INICIAL = 1000;   // WLD
   const PLAZOS_TXT = ['24 horas', '7 días', '15 días', '1 mes', '3 meses'];
 
+  // ---- Logo y redes ------------------------------------------------
+  //  El logo se guarda en GekMetadataV3 con SSTORE2 y los enlaces van
+  //  como JSON dentro del campo de descripción, igual que en World Launch.
+  //
+  //  ⚠️ setMetadata recibe (address,string,string,bytes) y no está
+  //  confirmado cuál string es cuál. Por eso la metadata va en una
+  //  SEGUNDA transacción, después de que el token ya existe: si esta
+  //  llamada falla, el token queda creado igual y se puede reintentar.
+  //  Cuando se confirme el orden, se puede unir al lote de creación.
+  const CREAR_LOGO_MAX_BYTES = 6000;   // ~6 KB, lo que entra sin disparar el gas
+  const CREAR_LOGO_LADO      = 128;
+
+  let crearLogoBytes = null;   // Uint8Array con la imagen ya comprimida
+
+  async function comprimirLogo(file){
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      const u = URL.createObjectURL(file);
+      i.onload  = () => { URL.revokeObjectURL(u); res(i); };
+      i.onerror = () => { URL.revokeObjectURL(u); rej(new Error('no se pudo leer la imagen')); };
+      i.src = u;
+    });
+
+    for(const lado of [CREAR_LOGO_LADO, 96, 72]){
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = lado;
+      const cx = cv.getContext('2d');
+      const m = Math.min(img.width, img.height);           // recorte cuadrado centrado
+      cx.drawImage(img, (img.width - m) / 2, (img.height - m) / 2, m, m, 0, 0, lado, lado);
+
+      for(const q of [0.85, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2]){
+        const blob = await new Promise(r => cv.toBlob(r, 'image/webp', q));
+        if(blob && blob.size <= CREAR_LOGO_MAX_BYTES){
+          return { bytes: new Uint8Array(await blob.arrayBuffer()), lado, size: blob.size };
+        }
+      }
+    }
+    throw new Error('la imagen no baja de 6 KB, probá con una más simple');
+  }
+
+  // Enlaces guardados como JSON dentro de la descripción
+  function armarDescripcion(){
+    const desc = document.getElementById('crearDesc').value.trim();
+    const tg   = document.getElementById('crearTg').value.trim();
+    const x    = document.getElementById('crearX').value.trim();
+    const web  = document.getElementById('crearWeb').value.trim();
+    if(!tg && !x && !web) return desc;
+    const links = {};
+    if(tg)  links.telegram = tg;
+    if(x)   links.x        = x;
+    if(web) links.web      = web;
+    return JSON.stringify({ d: desc, links });
+  }
+
+  async function enviarMetadata(tokenAddr){
+    if(!crearLogoBytes && !document.getElementById('crearDesc').value.trim()) return null;
+    const k = getMiniKit();
+    if(!k) return 'MiniKit no disponible';
+    try{
+      const iface = new ethers.Interface(['function setMetadata(address,string,string,bytes)']);
+      const data = iface.encodeFunctionData('setMetadata', [
+        tokenAddr,
+        armarDescripcion(),
+        '',
+        crearLogoBytes ? ethers.hexlify(crearLogoBytes) : '0x'
+      ]);
+      const res = await k.sendTransaction({
+        chainId: CHAIN_ID,
+        transactions: [{ to: GEK_METADATA, data }]
+      });
+      const ok = (res && res.data && res.data.status === 'success')
+        || (res && res.finalPayload && res.finalPayload.status !== 'error');
+      console.log('DEBUG setMetadata res:', JSON.stringify(res));
+      return ok ? null : 'la metadata no se pudo guardar';
+    }catch(e){
+      return (e && e.message) ? e.message : String(e);
+    }
+  }
+
   let crearFeeBps   = 25;
   let crearPlazo    = 0;
   let crearCostoWei = null;   // costo de creación leído del contrato (null = sin leer)
@@ -2485,6 +2803,24 @@
         const v = num(document.getElementById('crearCompra').value);
         document.getElementById('crearPlazoWrap').style.display = v > 0 ? 'block' : 'none';
         renderCrearResumen();
+      });
+      document.getElementById('crearLogo').addEventListener('change', async (ev)=>{
+        const f = ev.target.files && ev.target.files[0];
+        if(!f) return;
+        const info = document.getElementById('crearLogoInfo');
+        const prev = document.getElementById('crearLogoPrev');
+        info.textContent = 'Procesando…';
+        try{
+          const r = await comprimirLogo(f);
+          crearLogoBytes = r.bytes;
+          const url = URL.createObjectURL(new Blob([r.bytes], { type: 'image/webp' }));
+          prev.innerHTML = '<img src="' + url + '" alt="">';
+          info.textContent = r.lado + ' px · ' + (r.size / 1024).toFixed(1) + ' KB';
+        }catch(e){
+          crearLogoBytes = null;
+          prev.innerHTML = 'sin<br>logo';
+          info.textContent = (e && e.message) ? e.message : 'no se pudo procesar';
+        }
       });
       document.getElementById('crearNombre').addEventListener('input', renderCrearResumen);
       document.getElementById('crearSimbolo').addEventListener('input', renderCrearResumen);
@@ -2625,17 +2961,29 @@
 
       const dir = await esperarTokenNuevo(antes);
       if(dir){
+        let extra = '';
+        if(crearLogoBytes || document.getElementById('crearDesc').value.trim()){
+          out.textContent = '✅ Token creado. Ahora firmá el logo y la descripción…';
+          const err = await enviarMetadata(dir);
+          extra = err
+            ? '<br><br><span style="color:var(--red);">El logo no se guardó: ' + esc(err) + '</span>'
+            : '<br><br>Logo y descripción guardados.';
+        }
         out.innerHTML =
           '✅ <b style="color:var(--zorp);">' + esc(simbolo) + '</b> creado.<br>' +
           'Contrato: ' + esc(dir) + '<br><br>' +
-          '<span style="color:var(--zorp); cursor:pointer;" onclick="copiarTexto(\'' + esc(dir) + '\')">Copiar dirección</span>';
+          '<span style="color:var(--zorp); cursor:pointer;" onclick="copiarTexto(\'' + esc(dir) + '\')">Copiar dirección</span>' +
+          extra;
       }else{
-        out.textContent = '✅ Transacción aceptada. La dirección puede tardar unos bloques en aparecer.';
+        out.textContent = '✅ Transacción aceptada, pero no pude leer la dirección todavía. ' +
+                          'El logo se puede cargar después desde la ficha del token.';
       }
 
-      document.getElementById('crearNombre').value = '';
-      document.getElementById('crearSimbolo').value = '';
-      document.getElementById('crearCompra').value = '';
+      ['crearNombre','crearSimbolo','crearCompra','crearDesc','crearTg','crearX','crearWeb']
+        .forEach(id => { document.getElementById(id).value = ''; });
+      crearLogoBytes = null;
+      document.getElementById('crearLogoPrev').innerHTML = 'sin<br>logo';
+      document.getElementById('crearLogoInfo').textContent = 'Se achica a 128 px para que entre en la cadena.';
       document.getElementById('crearPlazoWrap').style.display = 'none';
       leerEstadoFactory();
       setTimeout(loadBalances, 5000);
