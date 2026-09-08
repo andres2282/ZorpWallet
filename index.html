@@ -2105,9 +2105,11 @@
       const total = Number(await f.totalTokensCreated());
       const n = Math.min(LANZADOS_A_ESCANEAR, total);
       const idx = [];
-      for(let i = 0; i < n; i++) idx.push(total - 1 - i);
+      for(let i = total - 1; i >= LANZADOS_DESDE && idx.length < n; i--) idx.push(i);
       const dirs = await Promise.all(idx.map(i => f.allTokens(i).catch(()=> null)));
-      lanzadosDirs   = dirs.filter(Boolean).map(a => a.toLowerCase());
+      lanzadosDirs = dirs.filter(Boolean)
+        .map(a => a.toLowerCase())
+        .filter(lanzadoVisible);
       lanzadosDirsAt = Date.now();
     }catch(e){
       console.error('direccionesLanzadas', e);
@@ -2229,6 +2231,7 @@
         };
       }));
 
+      destacados = destacados.filter(d => lanzadoVisible(d.address));
       // el orden lo decide lo pagado: quien más invierte va más arriba
       destacados.sort((a, b) => b.pagado - a.pagado);
       destIndex = 0;
@@ -2438,6 +2441,7 @@
     return SEL_COMPRAR != null;
   }
 
+  const VIVO_TOKENS = 8;       // cuántos tokens se vigilan en el feed
   const curvaAToken = {};      // curva -> { address, simbolo, decimals }
   let vivoTimer = null;
   let vivoOps   = [];
@@ -2460,45 +2464,58 @@
     return curvaAToken[k];
   }
 
+  // World App manda las transacciones como UserOperation: la transacción
+  // externa va al bundler, no al router, así que el router NO aparece como
+  // destino en /addresses/{router}/transactions. Por eso el feed salía vacío.
+  //
+  // Se arma con lo que sí funciona: las transferencias de cada token.
+  // Si el token sale de su curva es una compra; si entra, una venta.
   async function cargarVivo(){
     const el = document.getElementById('vivoLista');
     try{
-      const r = await fetch(TK_EXPLORER + '/addresses/' + GEK_ROUTER + '/transactions?filter=to');
-      if(!r.ok) throw new Error('HTTP ' + r.status);
-      const d = await r.json();
-      const items = (d.items || []).slice(0, 25);
-      if(!selectoresRouter()) return;
+      if(!lanzados.length) await cargarLanzados();
+      const top = lanzados
+        .filter(t => lanzadoVisible(t.address))
+        .slice()
+        .sort((a, b) => (b.raised > a.raised ? 1 : (b.raised < a.raised ? -1 : 0)))
+        .slice(0, VIVO_TOKENS);
 
-      const crudas = [];
-      items.forEach(it => {
-        const input = it.raw_input || (it.decoded_input && it.decoded_input.raw) || '';
-        if(!input || input.length < 138) return;
-        const sel = input.slice(0, 10).toLowerCase();
-        const esCompra = sel === SEL_COMPRAR;
-        const esVenta  = sel === SEL_VENDER;
-        if(!esCompra && !esVenta) return;
-        const curva = '0x' + input.slice(10 + 24, 10 + 64);
-        let monto;
-        try{ monto = BigInt('0x' + input.slice(10 + 64, 10 + 128)); }catch(e){ return; }
-        crudas.push({
-          hash: it.hash,
-          ts: it.timestamp ? Date.parse(it.timestamp) : Date.now(),
-          wallet: (it.from && it.from.hash) || '',
-          tipo: esCompra ? 'compra' : 'venta',
-          curva, monto
-        });
-      });
+      if(!top.length){
+        vivoOps = []; renderVivo(); return;
+      }
 
-      vivoOps = await Promise.all(crudas.slice(0, 15).map(async (o) => {
-        const t = await tokenDeCurva(o.curva);
-        return Object.assign({}, o, {
-          simbolo: t.simbolo,
-          token: t.address,
-          cantidad: o.tipo === 'compra'
-            ? parseFloat(ethers.formatUnits(o.monto, 18))          // WLD que entró
-            : parseFloat(ethers.formatUnits(o.monto, t.decimals))  // tokens vendidos
-        });
+      const porToken = await Promise.all(top.map(async (t) => {
+        try{
+          const r = await fetch(TK_EXPLORER + '/tokens/' + t.address + '/transfers');
+          if(!r.ok) return [];
+          const d = await r.json();
+          if(!Array.isArray(d.items)) return [];
+          const curva = (t.curva || '').toLowerCase();
+          const ops = [];
+          d.items.forEach(it => {
+            const de  = ((it.from && it.from.hash) || '').toLowerCase();
+            const a   = ((it.to   && it.to.hash)   || '').toLowerCase();
+            const val = it.total && it.total.value;
+            if(val == null) return;
+            const dec = Number((it.total && it.total.decimals) != null ? it.total.decimals : t.decimals);
+            let cant;
+            try{ cant = parseFloat(ethers.formatUnits(BigInt(val), dec)); }catch(e){ return; }
+            if(!(cant > 0)) return;
+            const ts = it.timestamp ? Date.parse(it.timestamp) : null;
+            if(!ts) return;
+            if(de === curva){
+              ops.push({ ts, tipo: 'compra', wallet: a,  cantidad: cant, simbolo: t.simbolo, token: t.address });
+            }else if(a === curva){
+              ops.push({ ts, tipo: 'venta',  wallet: de, cantidad: cant, simbolo: t.simbolo, token: t.address });
+            }
+          });
+          return ops;
+        }catch(e){ return []; }
       }));
+
+      vivoOps = [].concat.apply([], porToken)
+        .sort((x, y) => y.ts - x.ts)
+        .slice(0, 15);
 
       renderVivo();
     }catch(e){
@@ -2530,9 +2547,8 @@
       '<div class="vivo-row"' + (o.token ? ' onclick="abrirLanzadoPorDireccion(\'' + esc(o.token) + '\')"' : '') + '>' +
         '<span class="vivo-punto ' + o.tipo + '"></span>' +
         '<span class="vivo-txt"><span class="w">' + esc(shortAddr(o.wallet)) + '</span> ' +
-          (o.tipo === 'compra'
-            ? 'compró <b>' + trimNum(o.cantidad.toFixed(3)) + ' WLD</b> de <b>$' + esc(o.simbolo) + '</b>'
-            : 'vendió <b>' + fmtGrande(o.cantidad) + ' $' + esc(o.simbolo) + '</b>') +
+          (o.tipo === 'compra' ? 'compró <b>' : 'vendió <b>') +
+          fmtGrande(o.cantidad) + ' $' + esc(o.simbolo) + '</b>' +
         '</span>' +
         '<span class="vivo-t">' + haceCuanto(o.ts) + '</span>' +
       '</div>').join('');
@@ -2708,6 +2724,29 @@
     }));
   }
 
+  // ------------------------------------------------------------
+  //  QUÉ TOKENS SE MUESTRAN EN EL LAUNCHPAD
+  //  La factory es la misma que la de World Launch, así que el registro
+  //  de tokens es compartido. Esto es un filtro de vitrina, no una
+  //  separación real: los tokens siguen en la cadena y quien tenga la
+  //  dirección puede operarlos igual. Para separarlos de verdad hace
+  //  falta desplegar otra factory apuntando al mismo router y lock.
+  //
+  //  LANZADOS_DESDE: índice de la factory a partir del cual se muestra.
+  //    0 = todos. Poner acá el totalTokensCreated() del momento en que
+  //    quieras cortar y solo se verán los de ahí en adelante.
+  //  LANZADOS_OCULTOS: direcciones sueltas a esconder, en minúsculas.
+  // ------------------------------------------------------------
+  const LANZADOS_DESDE = 0;
+  const LANZADOS_OCULTOS = [
+    // '0x0000000000000000000000000000000000000000',
+  ].map(a => a.toLowerCase());
+
+  function lanzadoVisible(addr){
+    if(!addr) return false;
+    return LANZADOS_OCULTOS.indexOf(addr.toLowerCase()) === -1;
+  }
+
   const LZ_MAX_LISTA = 12;      // cuántos lanzamientos recientes se traen
   const LZ_SLIPPAGE  = 3;       // % de tolerancia
 
@@ -2751,9 +2790,12 @@
       }
 
       const idx = [];
-      for(let i = 0; i < Math.min(LZ_MAX_LISTA, total); i++) idx.push(total - 1 - i);
+      for(let i = total - 1; i >= LANZADOS_DESDE && idx.length < LZ_MAX_LISTA; i--) idx.push(i);
+      if(!idx.length){
+        lanzados = []; lanzadosAt = Date.now(); renderLanzados(); renderLpStrip(); return;
+      }
 
-      lanzados = await Promise.all(idx.map(async (i) => {
+      lanzados = (await Promise.all(idx.map(async (i) => {
         const addr  = await f.allTokens(i);
         const curva = await f.curveOf(addr);
         const t = new ethers.Contract(addr,  ERC20_ABI, p);
@@ -2771,7 +2813,7 @@
           decimals: Number(dec), raised, meta, graduado: grad,
           icon: lzIconCache[(addr || '').toLowerCase()] || null
         };
-      }));
+      }))).filter(t => lanzadoVisible(t.address));
 
       lanzadosAt = Date.now();
       renderLanzados();
@@ -3570,6 +3612,7 @@
         cerrarHoja();
         setTimeout(()=>{ cargarLanzados(true); loadBalances(); }, 6000);
         refrescarTrasOperar();
+        [8000, 20000, 45000].forEach(ms => setTimeout(cargarVivo, ms));
       }else{
         const codigo = codigoDeRespuesta(res);
         if(esCancelado(codigo)){
