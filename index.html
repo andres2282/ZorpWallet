@@ -575,10 +575,20 @@
     display:flex; align-items:center; justify-content:space-between;
     font-size:12px; font-weight:700; color:var(--text-dim); margin:18px 0 10px;
   }
-  .mc-card{
-    background:var(--panel); border:1px solid var(--border); border-radius:16px;
-    padding:14px 15px; margin-bottom:10px;
+  .mc-scroll{
+    display:flex; gap:11px; overflow-x:auto; scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch; scrollbar-width:none;
+    padding-bottom:4px; margin:0 -16px; padding-left:16px; padding-right:16px;
   }
+  .mc-scroll::-webkit-scrollbar{display:none;}
+  .mc-card{
+    flex:0 0 86%; scroll-snap-align:center;
+    background:var(--panel); border:1px solid var(--border); border-radius:16px;
+    padding:14px 15px;
+  }
+  .mc-dots{display:flex; gap:5px; justify-content:center; margin-top:10px;}
+  .mc-dots span{width:5px; height:5px; border-radius:50%; background:var(--border); transition:all .25s ease;}
+  .mc-dots span.on{width:14px; border-radius:3px; background:var(--zorp);}
   .mc-card:active{border-color:var(--zorp-dim);}
   .mc-top{display:flex; align-items:center; gap:11px;}
   .mc-top img{width:44px; height:44px; border-radius:12px; object-fit:cover; flex-shrink:0;}
@@ -844,11 +854,12 @@
         <div class="ticker-vacio">Esperando operaciones…</div>
       </div>
 
-      <div class="mc-cab">
-        <span>Por capitalización</span>
+      <div class="mc-cab" style="padding:0;">
+        <span>Top por Market Cap</span>
         <span style="font-size:10.5px; color:var(--text-faint);">en WLD</span>
       </div>
       <div id="mcGrid"><div class="empty-state">Cargando…</div></div>
+      <div class="mc-dots" id="mcDots"></div>
 
       <div class="crear-head" style="margin-top:20px;">
         <div class="section-title" style="margin:0;">Todos los tokens</div>
@@ -2967,8 +2978,17 @@
     });
   }
 
+  let lanzadosCargando = null;   // carga en curso, para no duplicarla
+
   async function cargarLanzados(force){
     engancharOrden();
+    if(lanzadosCargando) return lanzadosCargando;
+    lanzadosCargando = cargarLanzadosReal(force);
+    try{ return await lanzadosCargando; }
+    finally{ lanzadosCargando = null; }
+  }
+
+  async function cargarLanzadosReal(force){
     const el = document.getElementById('lzLista');
     if(!force && lanzados.length && (Date.now() - lanzadosAt) < 60000){
       renderLanzados(); return;
@@ -3034,7 +3054,7 @@
   let mcCargando = false;
 
   async function enriquecerLanzados(){
-    if(mcCargando || !lanzados.length) return;
+    if(!lanzados.length) return;
     mcCargando = true;
     try{
       const top = lanzados.slice()
@@ -3059,8 +3079,8 @@
               t.mcap = t.precio * parseFloat(ethers.formatUnits(supply, t.decimals));
             }
           }
-          if(holders != null) t.holders = holders;
-        }catch(e){}
+          t.holders = (holders != null) ? holders : '—';
+        }catch(e){ t.holders = '—'; }
       }));
       renderMcGrid();
     }finally{
@@ -3071,8 +3091,11 @@
   function renderMcGrid(){
     const el = document.getElementById('mcGrid');
     if(!el) return;
+    const dotsVacio = document.getElementById('mcDots');
     if(!lanzados.length){
+      el.className = '';
       el.innerHTML = '<div class="empty-state">Todavía no hay tokens lanzados</div>';
+      if(dotsVacio) dotsVacio.innerHTML = '';
       return;
     }
 
@@ -3085,6 +3108,7 @@
       })
       .slice(0, MC_CUANTOS);
 
+    el.className = 'mc-scroll';
     el.innerHTML = '';
     top.forEach((t, i) => {
       const meta  = t.meta > 0n ? parseFloat(ethers.formatUnits(t.meta, 18)) : 0;
@@ -3107,7 +3131,7 @@
           '</div>' +
           '<div class="mc-cap">' +
             '<div class="v">' + (t.mcap != null ? fmtGrande(t.mcap) : '…') + '</div>' +
-            '<div class="k">Capitalización</div>' +
+            '<div class="k">Market Cap</div>' +
           '</div>' +
         '</div>' +
         '<div class="mc-stats">' +
@@ -3124,6 +3148,26 @@
       card.onclick = () => abrirLanzado(t);
       el.appendChild(card);
     });
+
+    // puntitos que marcan en cuál estás mientras deslizás
+    const dots = document.getElementById('mcDots');
+    if(dots){
+      dots.innerHTML = '';
+      top.forEach((_, i) => {
+        const s = document.createElement('span');
+        if(i === 0) s.className = 'on';
+        dots.appendChild(s);
+      });
+      if(!el.dataset.enganchado){
+        el.dataset.enganchado = '1';
+        el.addEventListener('scroll', () => {
+          const ancho = el.scrollWidth / Math.max(1, el.children.length);
+          const idx = Math.round(el.scrollLeft / ancho);
+          Array.from(dots.children).forEach((d, i) =>
+            d.className = (i === idx ? 'on' : ''));
+        }, { passive: true });
+      }
+    }
   }
 
   function renderLanzados(){
