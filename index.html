@@ -1225,7 +1225,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b29-exactpct-merged-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b30-bestliquidity-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -1902,17 +1902,32 @@
     try{
       const p = await getReadProvider();
       const factory = new ethers.Contract(UNISWAP_V3_FACTORY, V3_FACTORY_ABI, p);
+      const poolAbi = ['function liquidity() view returns (uint128)'];
+
+      // revisamos TODOS los fee tiers y nos quedamos con el que tenga
+      // MÁS LIQUIDEZ REAL — un pool puede existir (getPool no da address(0))
+      // pero estar vacío (liquidity() = 0), y ahí el swap revierte sin mensaje
+      let mejorFee = null;
+      let mejorLiquidez = 0n;
       for(const fee of FEE_TIERS){
         try{
-          const pool = await factory.getPool(tokenA, tokenB, fee);
-          if(pool && pool !== ethers.ZeroAddress){
-            return { type: 'v3', poolFee: fee };
+          const poolAddr = await factory.getPool(tokenA, tokenB, fee);
+          if(poolAddr && poolAddr !== ethers.ZeroAddress){
+            const poolContract = new ethers.Contract(poolAddr, poolAbi, p);
+            const liq = await poolContract.liquidity();
+            if(liq > mejorLiquidez){
+              mejorLiquidez = liq;
+              mejorFee = fee;
+            }
           }
-        }catch(e){ /* seguir probando */ }
+        }catch(e){ /* seguir probando otros fee tiers */ }
+      }
+      if(mejorFee !== null && mejorLiquidez > 0n){
+        return { type: 'v3', poolFee: mejorFee };
       }
     }catch(e){ /* sin RPC, seguir a V2 */ }
 
-    // sin pool V3: probar si el par existe en la fábrica de World Swap
+    // sin pool V3 con liquidez real: probar si el par existe en la fábrica de World Swap
     try{
       const p = await getReadProvider();
       const worldSwapFactory = new ethers.Contract(WORLDSWAP_FACTORY, ['function getPair(address,address) view returns (address)'], p);
