@@ -1225,7 +1225,7 @@
   // ============================================================
   //  ZORP WALLET — configuración
   // ============================================================
-  const BUILD_ID = 'zorp-b28-sortdetail-' + new Date().toISOString().slice(0,16);
+  const BUILD_ID = 'zorp-b29-exactpct-merged-' + new Date().toISOString().slice(0,16);
   const ZORP_APP_ID   = 'app_1db094a73d41f2b4fda27d1a6f45373f';
   const CHAIN_ID       = 480; // World Chain
 
@@ -1711,7 +1711,7 @@
             <div class="tk-bal">${trimNum(formatted)}</div>
             ${r.usdValue !== null ? `<div class="tk-usd">$${r.usdValue.toLocaleString('es',{maximumFractionDigits:2})}</div>` : ''}
           </div>`;
-        const tkForDetail = { ...tk, icon: r.icon || geckoUrl || tk.icon, balance: formatted, usdValue: r.usdValue };
+        const tkForDetail = { ...tk, icon: r.icon || geckoUrl || tk.icon, balance: formatted, balanceRaw: r.bal, usdValue: r.usdValue };
         row.onclick = () => r.esLanzado
           ? abrirLanzadoPorDireccion(r.address)
           : openTokenDetail(tkForDetail);
@@ -2011,15 +2011,16 @@
   document.querySelectorAll('.pct-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const pct = parseInt(btn.dataset.pct, 10);
-      const bal = parseFloat(fromToken.balance || 0);
-      if(!bal){
+      const balRaw = fromToken.balanceRaw;
+      if(!balRaw || balRaw === 0n){
         showToast('No tenés saldo de ' + fromToken.symbol, true);
         return;
       }
-      const amount = pct === 100 ? bal : bal * (pct / 100);
-      // truncar a máximo 8 decimales: evita "too many decimals" en parseUnits
-      // y deja margen para tokens con menos de 18 decimales
-      document.getElementById('fromAmount').value = amount.toFixed(8).replace(/0+$/,'').replace(/\.$/,'');
+      // cálculo exacto en BigInt (wei), sin pasar por float: evita que el
+      // redondeo genere un monto MAYOR al saldo real (que rompía "vender el 100%")
+      const amountRaw = pct === 100 ? balRaw : (balRaw * BigInt(pct)) / 100n;
+      const amountStr = ethers.formatUnits(amountRaw, fromToken.decimals);
+      document.getElementById('fromAmount').value = amountStr;
       updateSwapButton();
       clearTimeout(quoteDebounceTimer);
       quoteDebounceTimer = setTimeout(refreshQuote, 600);
