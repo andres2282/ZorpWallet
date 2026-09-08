@@ -560,8 +560,46 @@
   .lz-info{flex:1; min-width:0;}
   .lz-nom{font-size:14px; font-weight:700; color:var(--text);}
   .lz-sub{font-size:11px; color:var(--text-faint); margin-top:2px;}
-  .lz-barra{height:3px; background:var(--panel-2); border-radius:2px; margin-top:7px; overflow:hidden;}
-  .lz-barra i{display:block; height:100%; background:var(--zorp); border-radius:2px;}
+  .lz-barra{height:6px; background:var(--panel-2); border-radius:3px; margin-top:8px; overflow:hidden;}
+  .lz-barra i{
+    display:block; height:100%; border-radius:3px;
+    background:linear-gradient(90deg, #4e9c14, var(--zorp));
+    box-shadow:0 0 6px rgba(126,224,42,.45);
+    min-width:3px;                 /* al 0,1% igual se ve un hilito */
+    transition:width .4s ease;
+  }
+  .lz-pc{font-size:11px; font-weight:800; color:var(--zorp);}
+
+  /* ---- Tarjetas por capitalización ---- */
+  .mc-cab{
+    display:flex; align-items:center; justify-content:space-between;
+    font-size:12px; font-weight:700; color:var(--text-dim); margin:18px 0 10px;
+  }
+  .mc-card{
+    background:var(--panel); border:1px solid var(--border); border-radius:16px;
+    padding:14px 15px; margin-bottom:10px;
+  }
+  .mc-card:active{border-color:var(--zorp-dim);}
+  .mc-top{display:flex; align-items:center; gap:11px;}
+  .mc-top img{width:44px; height:44px; border-radius:12px; object-fit:cover; flex-shrink:0;}
+  .mc-id{flex:1; min-width:0;}
+  .mc-nom{font-size:15px; font-weight:800; color:var(--text); line-height:1.2;}
+  .mc-sim{font-size:11.5px; color:var(--text-faint); margin-top:2px;}
+  .mc-cap{text-align:right; flex-shrink:0;}
+  .mc-cap .v{font-size:16px; font-weight:800; color:var(--zorp); line-height:1.1;}
+  .mc-cap .k{font-size:8.5px; letter-spacing:.5px; text-transform:uppercase; color:var(--text-faint);}
+  .mc-stats{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:13px;}
+  .mc-stats > div{background:var(--panel-2); border-radius:10px; padding:8px 9px;}
+  .mc-stats .k{font-size:8.5px; letter-spacing:.4px; text-transform:uppercase; color:var(--text-faint);}
+  .mc-stats .v{font-size:13px; font-weight:800; color:var(--text); margin-top:3px;}
+  .mc-pos{display:flex; align-items:center; justify-content:space-between; margin-top:12px;}
+  .mc-pos .lbl{font-size:10px; letter-spacing:.4px; text-transform:uppercase; color:var(--text-faint);}
+  .mc-rank{
+    width:20px; height:20px; border-radius:6px; background:var(--panel-2);
+    display:flex; align-items:center; justify-content:center;
+    font-size:10.5px; font-weight:800; color:var(--text-faint); flex-shrink:0;
+  }
+  .mc-rank.uno{background:var(--zorp); color:#08130a;}
   .lz-grad{
     font-size:8.5px; font-weight:800; letter-spacing:.4px; text-transform:uppercase;
     color:var(--zorp); border:1px solid var(--zorp-dim); border-radius:6px; padding:1px 5px;
@@ -806,8 +844,14 @@
         <div class="ticker-vacio">Esperando operaciones…</div>
       </div>
 
-      <div class="crear-head">
-        <div class="section-title" style="margin:0;">Launchpad</div>
+      <div class="mc-cab">
+        <span>Por capitalización</span>
+        <span style="font-size:10.5px; color:var(--text-faint);">en WLD</span>
+      </div>
+      <div id="mcGrid"><div class="empty-state">Cargando…</div></div>
+
+      <div class="crear-head" style="margin-top:20px;">
+        <div class="section-title" style="margin:0;">Todos los tokens</div>
         <button class="trend-refresh" style="margin-left:auto;" onclick="cargarLanzados(true)">↻ Actualizar</button>
       </div>
 
@@ -2862,6 +2906,7 @@
       if(!img) return;
       t.icon = img;
       renderLpStrip();
+      renderMcGrid();
       vivoOps.forEach(o => {
         if(o.token && o.token.toLowerCase() === t.address.toLowerCase()) o.icon = img;
       });
@@ -2941,7 +2986,8 @@
       const idx = [];
       for(let i = total - 1; i >= LANZADOS_DESDE && idx.length < LZ_MAX_LISTA; i--) idx.push(i);
       if(!idx.length){
-        lanzados = []; lanzadosAt = Date.now(); renderLanzados(); renderLpStrip(); return;
+        lanzados = []; lanzadosAt = Date.now();
+        renderLanzados(); renderMcGrid(); renderLpStrip(); return;
       }
 
       lanzados = (await Promise.all(idx.map(async (i) => {
@@ -2966,14 +3012,118 @@
 
       lanzadosAt = Date.now();
       renderLanzados();
+      renderMcGrid();
       renderLpStrip();
       lzCargarIconos();
+      enriquecerLanzados();
       cargarDestacados();
     }catch(e){
       console.error('lanzados', e);
       if(el) el.innerHTML = '<div class="empty-state">No se pudo leer la factory<br><br>' +
         '<span style="color:var(--zorp); cursor:pointer;" onclick="cargarLanzados(true)">↻ Reintentar</span></div>';
     }
+  }
+
+  // ------------------------------------------------------------
+  //  Tarjetas por capitalización.
+  //  Ojo: en una curva enlazada el precio depende solo de lo recaudado y
+  //  todos los tokens salen con el mismo suministro, así que este orden
+  //  coincide siempre con el de recaudado. El número igual sirve.
+  // ------------------------------------------------------------
+  const MC_CUANTOS = 6;
+  let mcCargando = false;
+
+  async function enriquecerLanzados(){
+    if(mcCargando || !lanzados.length) return;
+    mcCargando = true;
+    try{
+      const top = lanzados.slice()
+        .sort((a, b) => (b.raised > a.raised ? 1 : (b.raised < a.raised ? -1 : 0)))
+        .slice(0, MC_CUANTOS);
+
+      const p = await getReadProvider();
+      await Promise.all(top.map(async (t) => {
+        try{
+          const c   = new ethers.Contract(t.curva,   CURVE_ABI, p);
+          const tok = new ethers.Contract(t.address, ERC20_ABI.concat(ERC20_SUPPLY_ABI), p);
+          const [vQ, vT, supply, holders] = await Promise.all([
+            c.virtualQuoteReserve().catch(()=> null),
+            c.virtualTokenReserve().catch(()=> null),
+            tok.totalSupply().catch(()=> null),
+            leerHolders(t.address)
+          ]);
+          if(vQ != null && vT != null && vT > 0n){
+            t.precio = parseFloat(ethers.formatUnits(vQ, 18)) /
+                       parseFloat(ethers.formatUnits(vT, t.decimals));
+            if(supply != null){
+              t.mcap = t.precio * parseFloat(ethers.formatUnits(supply, t.decimals));
+            }
+          }
+          if(holders != null) t.holders = holders;
+        }catch(e){}
+      }));
+      renderMcGrid();
+    }finally{
+      mcCargando = false;
+    }
+  }
+
+  function renderMcGrid(){
+    const el = document.getElementById('mcGrid');
+    if(!el) return;
+    if(!lanzados.length){
+      el.innerHTML = '<div class="empty-state">Todavía no hay tokens lanzados</div>';
+      return;
+    }
+
+    const top = lanzados.slice()
+      .sort((a, b) => {
+        const ma = a.mcap != null ? a.mcap : -1;
+        const mb = b.mcap != null ? b.mcap : -1;
+        if(ma !== mb) return mb - ma;
+        return (b.raised > a.raised ? 1 : (b.raised < a.raised ? -1 : 0));
+      })
+      .slice(0, MC_CUANTOS);
+
+    el.innerHTML = '';
+    top.forEach((t, i) => {
+      const meta  = t.meta > 0n ? parseFloat(ethers.formatUnits(t.meta, 18)) : 0;
+      const rec   = parseFloat(ethers.formatUnits(t.raised, 18));
+      const pct   = meta > 0 ? Math.min(100, (rec / meta) * 100) : 0;
+      const falta = Math.max(0, meta - rec);
+
+      const card = document.createElement('div');
+      card.className = 'mc-card';
+      card.innerHTML =
+        '<div class="mc-top">' +
+          '<div class="mc-rank' + (i === 0 ? ' uno' : '') + '">' + (i + 1) + '</div>' +
+          (t.icon ? '<img src="' + t.icon + '" alt="">' :
+            '<div class="tk-icon" style="width:44px; height:44px; border-radius:12px;">' +
+              tkIconHtml({ icon: null, symbol: t.simbolo }) + '</div>') +
+          '<div class="mc-id">' +
+            '<div class="mc-nom">' + esc(t.nombre) + '</div>' +
+            '<div class="mc-sim">$' + esc(t.simbolo) +
+              (t.graduado ? ' · <span style="color:var(--zorp);">graduado</span>' : '') + '</div>' +
+          '</div>' +
+          '<div class="mc-cap">' +
+            '<div class="v">' + (t.mcap != null ? fmtGrande(t.mcap) : '…') + '</div>' +
+            '<div class="k">Capitalización</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="mc-stats">' +
+          '<div><div class="k">Poseedores</div><div class="v">' +
+            (t.holders != null ? t.holders : '…') + '</div></div>' +
+          '<div><div class="k">Curva</div><div class="v">' + pct.toFixed(1) + '%</div></div>' +
+          '<div><div class="k">Falta</div><div class="v">' + fmtGrande(falta) + '</div></div>' +
+        '</div>' +
+        '<div class="mc-pos">' +
+          '<span class="lbl">Avance a la graduación</span>' +
+          '<span class="lz-pc">' + trimNum(rec) + ' / ' + trimNum(meta) + ' WLD</span>' +
+        '</div>' +
+        '<div class="lz-barra"><i style="width:' + Math.max(pct, 0.5) + '%"></i></div>';
+      card.onclick = () => abrirLanzado(t);
+      el.appendChild(card);
+    });
   }
 
   function renderLanzados(){
@@ -3011,8 +3161,9 @@
         '<div class="lz-info">' +
           '<div class="lz-nom">' + esc(t.nombre) + ' · ' + esc(t.simbolo) +
             (t.graduado ? ' <span class="lz-grad">graduado</span>' : '') + '</div>' +
-          '<div class="lz-sub">' + trimNum(rec) + ' / ' + trimNum(meta) + ' WLD · ' + pct.toFixed(1) + '%</div>' +
-          '<div class="lz-barra"><i style="width:' + pct + '%"></i></div>' +
+          '<div class="lz-sub">' + trimNum(rec) + ' / ' + trimNum(meta) + ' WLD · ' +
+            '<span class="lz-pc">' + pct.toFixed(1) + '%</span></div>' +
+          '<div class="lz-barra"><i style="width:' + Math.max(pct, 0.5) + '%"></i></div>' +
         '</div>';
       row.onclick = () => abrirLanzado(t);
       el.appendChild(row);
