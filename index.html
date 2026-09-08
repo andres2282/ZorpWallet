@@ -238,6 +238,13 @@
   .trend-badge.ok{color:var(--zorp); border-color:var(--zorp-dim);}
 
   /* tira horizontal de tendencias dentro de Swap */
+  .lp-strip-cab{
+    display:flex; align-items:center; gap:2px; font-size:12px; font-weight:700;
+    color:var(--text-dim); margin:2px 0 9px;
+  }
+  .lp-chip-pc{font-size:10.5px; font-weight:700; color:var(--zorp);}
+  .lp-chip-pc.grad{color:var(--text-faint);}
+
   .trend-strip-title{
     display:flex; align-items:center; font-size:12px; font-weight:700;
     color:var(--text-dim); margin:20px 0 9px;
@@ -281,6 +288,55 @@
   .missions-card .m-btn{
     background:var(--zorp-dim); color:#0e1f06; font-size:12px; font-weight:700; padding:8px 14px; border-radius:10px; border:none;
   }
+
+  /* ---- Destacados y feed en vivo ---- */
+  .dest-card{
+    position:relative; display:flex; align-items:center; gap:12px;
+    background:linear-gradient(135deg, #16240a, #0d1a06);
+    border:1px solid var(--zorp-dim); border-radius:16px; padding:14px 15px; min-height:80px;
+  }
+  .dest-card img{width:48px; height:48px; border-radius:13px; object-fit:cover; flex-shrink:0;}
+  .dest-txt{flex:1; min-width:0;}
+  .dest-nom{font-size:15px; font-weight:800; color:var(--text);}
+  .dest-sub{font-size:11.5px; color:var(--text-dim); margin-top:3px;}
+  .dest-top{
+    position:absolute; top:7px; right:9px; font-size:8.5px; font-weight:800;
+    letter-spacing:.5px; color:#08130a; background:var(--zorp);
+    border-radius:5px; padding:2px 6px;
+  }
+  .dest-dots{display:flex; gap:5px; justify-content:center; margin-top:9px;}
+  .dest-dots span{width:5px; height:5px; border-radius:50%; background:var(--border); transition:all .25s ease;}
+  .dest-dots span.on{width:14px; border-radius:3px; background:var(--zorp);}
+
+  .vivo-row{
+    display:flex; align-items:center; gap:10px; padding:9px 2px;
+    border-bottom:1px solid var(--border); font-size:12.5px;
+  }
+  .vivo-row:last-child{border-bottom:none;}
+  .vivo-punto{width:7px; height:7px; border-radius:50%; flex-shrink:0;}
+  .vivo-punto.compra{background:var(--zorp);}
+  .vivo-punto.venta{background:var(--red);}
+  .vivo-txt{flex:1; min-width:0; color:var(--text-dim);}
+  .vivo-txt b{color:var(--text);}
+  .vivo-txt .w{font-family:ui-monospace,monospace; font-size:11px; color:var(--text-faint);}
+  .vivo-t{font-size:10px; color:var(--text-faint); white-space:nowrap;}
+  .vivo-cab{display:flex; align-items:center; gap:7px; margin:20px 0 9px;}
+  .vivo-cab .pulso{
+    width:7px; height:7px; border-radius:50%; background:var(--zorp);
+    animation:pulso 1.6s ease-in-out infinite;
+  }
+  @keyframes pulso{0%,100%{opacity:1;} 50%{opacity:.25;}}
+
+  .plan-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--panel-2); border:1px solid var(--border); border-radius:13px;
+    padding:13px 14px; margin-top:9px;
+  }
+  .plan-row.sel{border-color:var(--zorp); background:var(--zorp-dim);}
+  .plan-row.sel *{color:#08130a !important;}
+  .plan-row .pn{font-size:14px; font-weight:800; color:var(--text);}
+  .plan-row .pd{font-size:11.5px; color:var(--text-faint); margin-top:2px;}
+  .plan-row .pp{font-size:15px; font-weight:800; color:var(--zorp);}
 
   /* ---- Ficha de token, estilo mercado ---- */
   #screen-lanzado{padding-bottom:78px;}
@@ -555,11 +611,11 @@
   .opt-btn.active{background:var(--zorp-dim); border-color:var(--zorp); color:#08130a;}
   .crear-resumen{font-size:12.5px; color:var(--text-dim); line-height:1.8;}
   .crear-resumen .tot{color:var(--text); font-weight:700;}
-  #crearOut, #adsOut, #lzOut{
+  #crearOut, #adsOut, #lzOut, #destOut{
     font-size:11.5px; line-height:1.7; color:var(--text-dim);
     white-space:pre-wrap; word-break:break-word; margin-top:14px;
   }
-  #crearOut:not(:empty), #adsOut:not(:empty), #lzOut:not(:empty){
+  #crearOut:not(:empty), #adsOut:not(:empty), #lzOut:not(:empty), #destOut:not(:empty){
     background:var(--panel); border:1px solid var(--border);
     border-radius:12px; padding:12px 13px;
   }
@@ -704,11 +760,31 @@
     <!-- -------- TOKENS LANZADOS -------- -->
     <section class="screen" id="screen-lanzados">
       <div class="crear-head">
-        <div class="section-title" style="margin:0;">Tokens lanzados</div>
+        <div class="section-title" style="margin:0;">Launchpad</div>
         <button class="trend-refresh" style="margin-left:auto;" onclick="cargarLanzados(true)">↻ Actualizar</button>
       </div>
+
+      <div id="destWrap" style="display:none;">
+        <div id="destCard"></div>
+        <div class="dest-dots" id="destDots"></div>
+      </div>
+
+      <div class="tk-tabs" id="lzOrden" style="margin-top:14px;">
+        <button data-o="tendencia" class="active">Tendencia</button>
+        <button data-o="nuevos">Nuevos</button>
+        <button data-o="graduados">Graduados</button>
+      </div>
+
       <div class="card">
         <div id="lzLista"><div class="empty-state">Cargando…</div></div>
+      </div>
+
+      <div class="vivo-cab">
+        <span class="pulso"></span>
+        <span class="section-title" style="margin:0; font-size:15px;">En vivo</span>
+      </div>
+      <div class="card">
+        <div id="vivoLista"><div class="empty-state">Escuchando operaciones…</div></div>
       </div>
     </section>
 
@@ -717,7 +793,8 @@
       <div class="crear-head">
         <button class="back-btn" onclick="goTab('lanzados')">←</button>
         <div class="lz-sub" style="font-size:10px; letter-spacing:1.2px; text-transform:uppercase;">Mercado</div>
-        <button class="trend-refresh" style="margin-left:auto;" onclick="refrescarFicha()">↻ Actualizar</button>
+        <button class="trend-refresh" style="margin-left:auto;" onclick="abrirDestacar()">👑 Destacar</button>
+        <button class="trend-refresh" onclick="refrescarFicha()">↻</button>
       </div>
 
       <div class="card tk-id" id="tkId"></div>
@@ -761,6 +838,23 @@
     <div class="tk-actions" id="tkActions">
       <button class="comprar" onclick="abrirHoja('compra')">Comprar</button>
       <button class="vender"  onclick="abrirHoja('venta')">Vender</button>
+    </div>
+
+    <div class="hoja" id="destSheet" onclick="if(event.target===this) cerrarDestacar()">
+      <div class="cont">
+        <div class="cab">
+          <div class="tit" id="destTitulo">Destacar token</div>
+          <button class="cerrar" onclick="cerrarDestacar()">✕</button>
+        </div>
+        <div class="crear-hint" style="margin-bottom:6px;">
+          El token aparece arriba de todo en el Launchpad. El orden lo decide lo pagado:
+          quien más invierte va primero. Se puede volver a comprar para acumular.
+        </div>
+        <div id="destPlanes"></div>
+        <div class="crear-estado" id="destEstado" style="margin-top:14px;"></div>
+        <button class="btn" id="btnDestacar" style="margin-top:14px;">Destacar</button>
+        <div id="destOut"></div>
+      </div>
     </div>
 
     <div class="hoja" id="tradeSheet" onclick="if(event.target===this) cerrarHoja()">
@@ -881,7 +975,16 @@
     <!-- -------- TENDENCIAS -------- -->
     <section class="screen" id="screen-tendencias">
       <div class="section-title"><img class="icimg lg" src="data:image/webp;base64,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" alt="">Tendencias</div>
-      <div class="card">
+      <div class="lp-strip-cab">
+        <img id="lpStripIcon" class="icimg" alt="">
+        <span>Del Launchpad</span>
+        <button class="trend-refresh" style="margin-left:auto;" onclick="goTab('lanzados')">Ver todos →</button>
+      </div>
+      <div class="trend-strip" id="lpStrip">
+        <div class="trend-empty">Cargando…</div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
         <div class="trend-head">
           <div class="th-lbl">Tokens con par WLD en World Chain<br>por volumen y actividad de las últimas 24 h</div>
           <button class="trend-refresh" onclick="loadTrending(true)">↻ Actualizar</button>
@@ -1150,9 +1253,10 @@
     document.getElementById('screen-' + name).classList.add('active');
     document.querySelectorAll('.tab-btn-plain').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
     if(name === 'tendencias' || name === 'swap') loadTrending();
+    if(name === 'tendencias'){ renderLpStrip(); cargarLanzados(); }
     if(name === 'crear') initCrear();
     if(name === 'anunciar') initAnunciar();
-    if(name === 'lanzados') cargarLanzados();
+    if(name === 'lanzados'){ cargarLanzados(); arrancarVivo(); }
     const acc = document.getElementById('tkActions');
     if(acc) acc.classList.toggle('on', name === 'lanzado');
     if(name !== 'lanzado') cerrarHoja();
@@ -2075,6 +2179,365 @@
   }
 
   // ============================================================
+  //  DESTACADOS — se reusa WorldLaunchDestacados, ya desplegado.
+  //  ⚠️ hay que darlo de alta en Contract Entrypoints de ZorpWallet.
+  //  Cualquiera puede destacar cualquier token: a veces un usuario paga
+  //  para empujar un proyecto que le gusta.
+  // ============================================================
+  const DESTACADOS_ADDR = '0x9CDD9e7C453599A6D1DD47A5C81c9BD5bE6640FF';
+  const DEST_ABI = [
+    'function destacar(address token, uint8 plan)',
+    'function activos() view returns (address[], uint256[], uint256[])',
+    'function cuantosPlanes() view returns (uint256)',
+    'function planes(uint256) view returns (uint256, uint256)',
+    'function cupoLibre() view returns (uint256)'
+  ];
+  // Respaldo por si la forma del contrato no coincide: son los planes que
+  // ya venías usando (precio en WLD y duración en horas).
+  const DEST_PLANES_FALLBACK = [
+    { precio: 2,  horas: 3  },
+    { precio: 6,  horas: 12 },
+    { precio: 12, horas: 24 }
+  ];
+
+  let destacados     = [];
+  let destIndex      = 0;
+  let destTimer      = null;
+  let destPlanes     = null;
+  let destPlanSel    = 0;
+  let destEnviando   = false;
+
+  async function cargarDestacados(){
+    try{
+      const p = await getReadProvider();
+      const c = new ethers.Contract(DESTACADOS_ADDR, DEST_ABI, p);
+      const r = await c.activos();
+      const tokens = r[0] || [];
+      const hasta  = r[1] || [];
+      const pagado = r[2] || [];
+
+      destacados = await Promise.all(tokens.map(async (addr, i) => {
+        const tok = new ethers.Contract(addr, ERC20_ABI, p);
+        const [nombre, simbolo] = await Promise.all([
+          tok.name().catch(()=> '?'), tok.symbol().catch(()=> '?')
+        ]);
+        return {
+          address: addr, nombre, simbolo,
+          hasta:  hasta[i]  != null ? Number(hasta[i])  : 0,
+          pagado: pagado[i] != null ? parseFloat(ethers.formatUnits(pagado[i], 18)) : 0,
+          icon: lzIconCache[addr.toLowerCase()] || null
+        };
+      }));
+
+      // el orden lo decide lo pagado: quien más invierte va más arriba
+      destacados.sort((a, b) => b.pagado - a.pagado);
+      destIndex = 0;
+      renderDestacados();
+      cargarIconosDestacados();
+    }catch(e){
+      console.error('destacados', e);
+      destacados = [];
+      renderDestacados();
+    }
+  }
+
+  async function cargarIconosDestacados(){
+    await Promise.all(destacados.map(async (d) => {
+      if(d.icon) return;
+      const img = await lzIcono(d.address);
+      if(img) d.icon = img;
+    }));
+    renderDestacados();
+  }
+
+  function renderDestacados(){
+    const wrap = document.getElementById('destWrap');
+    const card = document.getElementById('destCard');
+    const dots = document.getElementById('destDots');
+    if(!wrap || !card) return;
+
+    if(!destacados.length){ wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    if(destIndex >= destacados.length) destIndex = 0;
+    const d = destacados[destIndex];
+
+    card.innerHTML =
+      '<div class="dest-card">' +
+        (destIndex === 0 ? '<div class="dest-top">👑 TOP</div>' : '<div class="dest-top">Destacado</div>') +
+        (d.icon ? '<img src="' + d.icon + '" alt="">' : '') +
+        '<div class="dest-txt">' +
+          '<div class="dest-nom">' + esc(d.nombre) + '</div>' +
+          '<div class="dest-sub">$' + esc(d.simbolo) +
+            (d.pagado ? ' · ' + trimNum(d.pagado) + ' WLD invertidos' : '') + '</div>' +
+        '</div>' +
+      '</div>';
+    card.onclick = () => abrirLanzadoPorDireccion(d.address);
+
+    dots.innerHTML = '';
+    if(destacados.length > 1){
+      destacados.forEach((_, i) => {
+        const s = document.createElement('span');
+        if(i === destIndex) s.className = 'on';
+        dots.appendChild(s);
+      });
+    }
+
+    if(destTimer) clearInterval(destTimer);
+    if(destacados.length > 1){
+      destTimer = setInterval(() => {
+        const sc = document.getElementById('screen-lanzados');
+        if(sc && !sc.classList.contains('active')) return;
+        destIndex = (destIndex + 1) % destacados.length;
+        renderDestacados();
+      }, 6000);
+    }
+  }
+
+  // ---------- comprar un destacado ----------
+  async function abrirDestacar(){
+    if(!lzActual){ showToast('Abrí primero la ficha del token', true); return; }
+    document.getElementById('destSheet').classList.add('on');
+    document.getElementById('destTitulo').textContent = 'Destacar ' + lzActual.simbolo;
+    document.getElementById('destOut').textContent = '';
+    await leerPlanesDestacado();
+    renderPlanes();
+  }
+
+  function cerrarDestacar(){
+    const s = document.getElementById('destSheet');
+    if(s) s.classList.remove('on');
+  }
+
+  async function leerPlanesDestacado(){
+    if(destPlanes) return destPlanes;
+    const est = document.getElementById('destEstado');
+    try{
+      const p = await getReadProvider();
+      const c = new ethers.Contract(DESTACADOS_ADDR, DEST_ABI, p);
+      const n = Number(await c.cuantosPlanes());
+      const lista = [];
+      for(let i = 0; i < Math.min(n, 6); i++){
+        const pl = await c.planes(i);
+        // no está confirmado cuál campo es cuál: el mayor es el precio en wei,
+        // el otro la duración en segundos
+        const a = BigInt(pl[0]), b = BigInt(pl[1]);
+        const precioWei = a > b ? a : b;
+        const dur       = a > b ? b : a;
+        lista.push({
+          precioWei,
+          precio: parseFloat(ethers.formatUnits(precioWei, 18)),
+          horas: Number(dur) / 3600
+        });
+      }
+      destPlanes = lista.length ? lista : null;
+      if(est) est.textContent = '';
+    }catch(e){
+      destPlanes = null;
+      if(est) est.textContent = 'No se pudieron leer los planes del contrato, se usan los conocidos.';
+    }
+    if(!destPlanes){
+      destPlanes = DEST_PLANES_FALLBACK.map(p => ({
+        precioWei: ethers.parseUnits(String(p.precio), 18),
+        precio: p.precio, horas: p.horas
+      }));
+    }
+    try{
+      const p = await getReadProvider();
+      const c = new ethers.Contract(DESTACADOS_ADDR, DEST_ABI, p);
+      const libre = await c.cupoLibre();
+      const est2 = document.getElementById('destEstado');
+      if(est2) est2.innerHTML = 'Espacios libres: <b>' + libre.toString() + '</b>';
+    }catch(e){}
+    return destPlanes;
+  }
+
+  function renderPlanes(){
+    const cont = document.getElementById('destPlanes');
+    if(!cont || !destPlanes) return;
+    cont.innerHTML = destPlanes.map((p, i) =>
+      '<div class="plan-row' + (i === destPlanSel ? ' sel' : '') + '" onclick="elegirPlan(' + i + ')">' +
+        '<div><div class="pn">' + (p.horas >= 24 ? (p.horas / 24) + ' día' + (p.horas >= 48 ? 's' : '') : p.horas + ' horas') + '</div>' +
+        '<div class="pd">Arriba de todo en el Launchpad</div></div>' +
+        '<div class="pp">' + trimNum(p.precio) + ' WLD</div>' +
+      '</div>').join('');
+    const btn = document.getElementById('btnDestacar');
+    if(btn && destPlanes[destPlanSel]){
+      btn.textContent = 'Destacar por ' + trimNum(destPlanes[destPlanSel].precio) + ' WLD';
+    }
+  }
+
+  function elegirPlan(i){
+    destPlanSel = i;
+    renderPlanes();
+  }
+
+  document.getElementById('btnDestacar').onclick = async ()=>{
+    if(destEnviando || !lzActual || !destPlanes) return;
+    const out = document.getElementById('destOut');
+    const plan = destPlanes[destPlanSel];
+    const k = getMiniKit();
+    if(!k){ showToast('MiniKit no disponible', true); return; }
+
+    try{
+      destEnviando = true;
+      out.textContent = 'Firmá en World App…';
+
+      const erc20Iface = new ethers.Interface(ERC20_ABI);
+      const destIface  = new ethers.Interface(DEST_ABI);
+      const transactions = [
+        { to: WLD_ADDRESS.toLowerCase(),
+          data: erc20Iface.encodeFunctionData('approve', [DESTACADOS_ADDR, plan.precioWei]) },
+        { to: DESTACADOS_ADDR,
+          data: destIface.encodeFunctionData('destacar', [lzActual.address, destPlanSel]) }
+      ];
+
+      const res = await k.sendTransaction({ chainId: CHAIN_ID, transactions });
+      const ok = (res && res.data && res.data.status === 'success')
+        || (res && res.finalPayload && res.finalPayload.status !== 'error');
+      console.log('DEBUG destacar res:', JSON.stringify(res));
+
+      if(ok){
+        out.textContent = '✅ ' + lzActual.simbolo + ' destacado por ' +
+          (plan.horas >= 24 ? (plan.horas / 24) + ' día(s)' : plan.horas + ' horas') + '.';
+        showToast('Token destacado ✅');
+        setTimeout(()=>{ cargarDestacados(); loadBalances(); }, 6000);
+        setTimeout(cerrarDestacar, 2500);
+      }else{
+        const codigo = codigoDeRespuesta(res);
+        if(esCancelado(codigo)){
+          out.textContent = 'Cancelaste la transacción.';
+        }else{
+          out.textContent = explicarErrorWorld(res, [
+            'WorldLaunchDestacados  ' + DESTACADOS_ADDR,
+            'WLD  ' + WLD_ADDRESS
+          ]);
+        }
+      }
+    }catch(e){
+      out.textContent = 'Error: ' + (e && e.message ? e.message : e);
+    }finally{
+      destEnviando = false;
+    }
+  };
+
+  // ============================================================
+  //  FEED EN VIVO — todas las compras y ventas del launchpad.
+  //  Todo pasa por GekRouter, así que basta con mirar las transacciones
+  //  que le llegan y decodificar los primeros parámetros a mano.
+  // ============================================================
+  const SEL_COMPRAR = ethers.id('comprar(address,uint256,uint256)').slice(0, 10);
+  const SEL_VENDER  = ethers.id('vender(address,uint256,uint256)').slice(0, 10);
+
+  const curvaAToken = {};      // curva -> { address, simbolo, decimals }
+  let vivoTimer = null;
+  let vivoOps   = [];
+
+  async function tokenDeCurva(curva){
+    const k = curva.toLowerCase();
+    if(curvaAToken[k]) return curvaAToken[k];
+    try{
+      const p = await getReadProvider();
+      const c = new ethers.Contract(curva, CURVE_ABI, p);
+      const addr = await c.token();
+      const tok = new ethers.Contract(addr, ERC20_ABI, p);
+      const [simbolo, dec] = await Promise.all([
+        tok.symbol().catch(()=> '?'), tok.decimals().catch(()=> 18)
+      ]);
+      curvaAToken[k] = { address: addr, simbolo, decimals: Number(dec) };
+    }catch(e){
+      curvaAToken[k] = { address: null, simbolo: '?', decimals: 18 };
+    }
+    return curvaAToken[k];
+  }
+
+  async function cargarVivo(){
+    const el = document.getElementById('vivoLista');
+    try{
+      const r = await fetch(TK_EXPLORER + '/addresses/' + GEK_ROUTER + '/transactions?filter=to');
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      const items = (d.items || []).slice(0, 25);
+
+      const crudas = [];
+      items.forEach(it => {
+        const input = it.raw_input || (it.decoded_input && it.decoded_input.raw) || '';
+        if(!input || input.length < 138) return;
+        const sel = input.slice(0, 10).toLowerCase();
+        const esCompra = sel === SEL_COMPRAR;
+        const esVenta  = sel === SEL_VENDER;
+        if(!esCompra && !esVenta) return;
+        const curva = '0x' + input.slice(10 + 24, 10 + 64);
+        let monto;
+        try{ monto = BigInt('0x' + input.slice(10 + 64, 10 + 128)); }catch(e){ return; }
+        crudas.push({
+          hash: it.hash,
+          ts: it.timestamp ? Date.parse(it.timestamp) : Date.now(),
+          wallet: (it.from && it.from.hash) || '',
+          tipo: esCompra ? 'compra' : 'venta',
+          curva, monto
+        });
+      });
+
+      vivoOps = await Promise.all(crudas.slice(0, 15).map(async (o) => {
+        const t = await tokenDeCurva(o.curva);
+        return Object.assign({}, o, {
+          simbolo: t.simbolo,
+          token: t.address,
+          cantidad: o.tipo === 'compra'
+            ? parseFloat(ethers.formatUnits(o.monto, 18))          // WLD que entró
+            : parseFloat(ethers.formatUnits(o.monto, t.decimals))  // tokens vendidos
+        });
+      }));
+
+      renderVivo();
+    }catch(e){
+      console.error('vivo', e);
+      if(el && !vivoOps.length){
+        el.innerHTML = '<div class="empty-state">No se pudo leer el feed en vivo<br><br>' +
+          '<span style="font-size:10.5px; color:var(--text-faint);">' +
+          esc((e && e.message) ? e.message : String(e)) + '</span></div>';
+      }
+    }
+  }
+
+  function haceCuanto(ts){
+    const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    if(s < 60) return 'hace ' + s + ' s';
+    if(s < 3600) return 'hace ' + Math.floor(s / 60) + ' min';
+    if(s < 86400) return 'hace ' + Math.floor(s / 3600) + ' h';
+    return 'hace ' + Math.floor(s / 86400) + ' d';
+  }
+
+  function renderVivo(){
+    const el = document.getElementById('vivoLista');
+    if(!el) return;
+    if(!vivoOps.length){
+      el.innerHTML = '<div class="empty-state">Todavía no hay operaciones</div>';
+      return;
+    }
+    el.innerHTML = vivoOps.map(o =>
+      '<div class="vivo-row"' + (o.token ? ' onclick="abrirLanzadoPorDireccion(\'' + esc(o.token) + '\')"' : '') + '>' +
+        '<span class="vivo-punto ' + o.tipo + '"></span>' +
+        '<span class="vivo-txt"><span class="w">' + esc(shortAddr(o.wallet)) + '</span> ' +
+          (o.tipo === 'compra'
+            ? 'compró <b>' + trimNum(o.cantidad.toFixed(3)) + ' WLD</b> de <b>$' + esc(o.simbolo) + '</b>'
+            : 'vendió <b>' + fmtGrande(o.cantidad) + ' $' + esc(o.simbolo) + '</b>') +
+        '</span>' +
+        '<span class="vivo-t">' + haceCuanto(o.ts) + '</span>' +
+      '</div>').join('');
+  }
+
+  function arrancarVivo(){
+    cargarVivo();
+    if(vivoTimer) clearInterval(vivoTimer);
+    vivoTimer = setInterval(() => {
+      const sc = document.getElementById('screen-lanzados');
+      if(sc && !sc.classList.contains('active')) return;   // no gastamos consultas fuera de pantalla
+      cargarVivo();
+    }, 15000);
+  }
+
+  // ============================================================
   //  ERRORES DE WORLD APP
   //  En World App no se puede abrir la consola, así que el motivo
   //  real tiene que quedar escrito en pantalla y no irse solo.
@@ -2226,6 +2689,7 @@
       if(txt){ t.desc = txt.desc; t.links = txt.links; }
       if(!img) return;
       t.icon = img;
+      renderLpStrip();
       document.querySelectorAll('[data-lz="' + t.address.toLowerCase() + '"]').forEach(el => {
         el.innerHTML = '<img src="' + img + '" alt="" style="width:100%; height:100%; ' +
                        'object-fit:cover; border-radius:50%;">';
@@ -2238,13 +2702,29 @@
 
   let lanzados      = [];
   let lanzadosAt    = 0;
+  let lzOrdenActual = 'tendencia';
   let lzActual      = null;     // token abierto en la ficha
   let lzSaldo       = 0n;       // saldo del usuario en ese token
   let lzQuoteTimer  = null;
   let lzEnviando    = false;
   let lzIniciado    = false;
 
+  let lzOrdenEnganchado = false;
+  function engancharOrden(){
+    if(lzOrdenEnganchado) return;
+    const cont = document.getElementById('lzOrden');
+    if(!cont) return;
+    lzOrdenEnganchado = true;
+    cont.addEventListener('click', (ev)=>{
+      const b = ev.target.closest('button'); if(!b) return;
+      lzOrdenActual = b.dataset.o;
+      document.querySelectorAll('#lzOrden button').forEach(x=>x.classList.toggle('active', x === b));
+      renderLanzados();
+    });
+  }
+
   async function cargarLanzados(force){
+    engancharOrden();
     const el = document.getElementById('lzLista');
     if(!force && lanzados.length && (Date.now() - lanzadosAt) < 60000){
       renderLanzados(); return;
@@ -2284,7 +2764,9 @@
 
       lanzadosAt = Date.now();
       renderLanzados();
+      renderLpStrip();
       lzCargarIconos();
+      cargarDestacados();
     }catch(e){
       console.error('lanzados', e);
       if(el) el.innerHTML = '<div class="empty-state">No se pudo leer la factory<br><br>' +
@@ -2299,8 +2781,20 @@
       el.innerHTML = '<div class="empty-state">Todavía no se lanzó ningún token</div>';
       return;
     }
+    // el orden lo elige el usuario con las pestañas de arriba
+    let lista = lanzados.slice();
+    if(lzOrdenActual === 'tendencia'){
+      lista.sort((a, b) => (b.raised > a.raised ? 1 : (b.raised < a.raised ? -1 : 0)));
+    }else if(lzOrdenActual === 'graduados'){
+      lista = lista.filter(t => t.graduado);
+    }
+    if(!lista.length){
+      el.innerHTML = '<div class="empty-state">Nada para mostrar en este orden</div>';
+      return;
+    }
+
     el.innerHTML = '';
-    lanzados.forEach(t => {
+    lista.forEach(t => {
       const meta = t.meta > 0n ? parseFloat(ethers.formatUnits(t.meta, 18)) : 0;
       const rec  = parseFloat(ethers.formatUnits(t.raised, 18));
       const pct  = meta > 0 ? Math.min(100, (rec / meta) * 100) : 0;
@@ -4099,6 +4593,47 @@
     if(t.permitido === false){
       showToast(t.symbol + ' todavía no está habilitado en el contrato de swap', true);
     }
+  }
+
+  // Los tokens del launchpad no tienen pool en ningún DEX hasta que gradúan,
+  // así que no pueden entrar en la lista de arriba, que se arma con pools.
+  // Van en su propia tira, ordenados por WLD recaudado.
+  function renderLpStrip(){
+    const el = document.getElementById('lpStrip');
+    if(!el) return;
+
+    // el cohete se toma del que ya está en la barra: cero bytes extra
+    try{
+      const ic  = document.getElementById('lpStripIcon');
+      const src = document.querySelector('.tab-btn-plain[data-tab="lanzados"] img');
+      if(ic && src && !ic.getAttribute('src')) ic.src = src.src;
+    }catch(e){}
+
+    if(!lanzados.length){
+      el.innerHTML = '<div class="trend-empty">Todavía no hay tokens lanzados</div>';
+      return;
+    }
+
+    const lista = lanzados.slice()
+      .sort((a, b) => (b.raised > a.raised ? 1 : (b.raised < a.raised ? -1 : 0)))
+      .slice(0, 12);
+
+    el.innerHTML = '';
+    lista.forEach(t => {
+      const meta = t.meta > 0n ? parseFloat(ethers.formatUnits(t.meta, 18)) : 0;
+      const rec  = parseFloat(ethers.formatUnits(t.raised, 18));
+      const pct  = meta > 0 ? Math.min(100, (rec / meta) * 100) : 0;
+
+      const chip = document.createElement('button');
+      chip.className = 'trend-chip';
+      chip.innerHTML =
+        (t.icon ? '<img src="' + t.icon + '" alt="" onerror="this.remove()">' : '') +
+        '<span>' + esc(t.simbolo) + '</span>' +
+        '<span class="lp-chip-pc' + (t.graduado ? ' grad' : '') + '">' +
+          (t.graduado ? 'graduado' : pct.toFixed(0) + '%') + '</span>';
+      chip.onclick = () => abrirLanzado(t);
+      el.appendChild(chip);
+    });
   }
 
   function renderTrending(){
